@@ -19,28 +19,33 @@ struct Contact {
 	string firstName, lastName, number;
 };
 
-bool openFile(const string & fileName, ifstream & in);
-bool readLines(ifstream & in, vector<Contact> & vector);
+bool openFile(const string &fileName, ifstream &in);
+bool readLines(ifstream &in, vector<Contact> &vector);
+bool checkPhoneNumber(string &number);
 
-bool report ( const string & fileName, ostream & out ) {
+
+
+bool report(const string &fileName, ostream &out) {
 
 	// opening file
 	ifstream in;
 	bool succeeded = openFile(fileName, in);
-	#ifdef DEBUG
+#ifdef DEBUG
 	cout << "File opened: " << succeeded << endl;
-	#endif
-	if (!succeeded) return false;
+#endif
+	if (!succeeded)
+		return false;
 
 	vector<Contact> contacts;
-	if (!readLines(in, contacts)) {
+	if (!readLines(in, contacts))
+	{
 #ifdef DEBUG
 		cout << "Reading error" << endl;
 #endif
 		return false;
 	}
 
-	for (auto & c : contacts) {
+	for (auto &c : contacts) {
 		cout << c.order << " " << c.firstName << " " << c.lastName << " " << c.number << "\n";
 	}
 	cout << flush;
@@ -49,27 +54,30 @@ bool report ( const string & fileName, ostream & out ) {
 	return true;
 }
 
-bool openFile(const string & fileName, ifstream & in) {
+bool openFile(const string &fileName, ifstream &in) {
 	in = ifstream(fileName, ios::in);
 	return in.is_open();
 }
 
-bool readLines(ifstream & in, vector<Contact> & vector) {
+bool readLines(ifstream &in, vector<Contact> &vector) {
 	string line;
 	stringstream str;
 
-	for (size_t order = 0;in; order++) {
+	for (size_t order = 0; in; order++) {
 		getline(in, line);
-		#ifdef DEBUG
-		cout << "Line read: " << line << endl;
-		#endif
-		if (line.length() == 0) break;
+		if (line.length() == 0)
+			break;
 
 		string first, last, number, remaining;
 		str.clear();
 		str.str(line);
 		str >> first >> last >> number;
-		//TODO check number
+		if (first.length() == 0 || last.length() == 0 || !checkPhoneNumber(number)) {
+#ifdef DEBUG
+			cout << "Remaining found" << endl;
+#endif
+			return false;
+		}
 
 		str >> remaining;
 		if (remaining.length() != 0) {
@@ -83,10 +91,12 @@ bool readLines(ifstream & in, vector<Contact> & vector) {
 	return in.good();
 }
 
-bool checkPhoneNumber(string & number) {
-	if (number.length() != 9) return false;
+bool checkPhoneNumber(string &number) {
+	if (number.length() != 9)
+		return false;
 	for (auto c : number)
-		if (c < '0' || '9' < c) return false;
+		if (c < '0' || '9' < c)
+			return false;
 	return number.at(0) != '0';
 }
 
@@ -94,19 +104,19 @@ bool checkPhoneNumber(string & number) {
 int main() {
 	ostringstream oss;
 	oss.str("");
-	assert(report( "tests/test0_in.txt", oss ) == true);
+	assert(report("tests/test0_in.txt", oss) == true);
 	assert(oss.str() ==
-			"John Christescu 258452362\n"
-			"John Harmson 861647702\n"
-			"-> 2\n"
-			"-> 0\n"
-			"Josh Dakhov 264112084\n"
-			"Dakhov Speechley 865216101\n"
-			"-> 2\n"
-			"John Harmson 861647702\n"
-			"-> 1\n" );
+		   "John Christescu 258452362\n"
+		   "John Harmson 861647702\n"
+		   "-> 2\n"
+		   "-> 0\n"
+		   "Josh Dakhov 264112084\n"
+		   "Dakhov Speechley 865216101\n"
+		   "-> 2\n"
+		   "John Harmson 861647702\n"
+		   "-> 1\n");
 	oss.str("");
-	assert(report( "tests/test1_in.txt", oss) == false);
+	assert(report("tests/test1_in.txt", oss) == false);
 	return 0;
 }
 #endif /* __PROGTEST__ */
