@@ -1,4 +1,4 @@
-# Makefile for Writing Make Files Example
+# Make file for Writing Make Files Example
 
 # *****************************************************
 # Variables to control Makefile operation
@@ -24,4 +24,5 @@ all: $(TARGET)
 clean:
 	$(RM) $(TARGET)
 	$(RM) $(TARGET).o
+	$(RM) tempfile
 

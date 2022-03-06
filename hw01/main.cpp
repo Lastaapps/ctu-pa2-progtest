@@ -19,11 +19,64 @@
 #include <functional>
 #include <stdexcept>
 using namespace std;
+
+
+/**
+ * Decompresses a file using Huffman coding and save the output to another one
+ * @param inFileName the fileName of the input compressed file
+ * @param outFileName the fileName of the output decompressed file
+ * @return if decopression succeded
+ */
+bool decompressFile ( const char * inFileName, const char * outFileName );
+
 #endif /* __PROGTEST__ */
 
+#define PRINT if(true)
+
+/**
+ * Stores in and out file streams
+ */
+class FileStreams {
+    private:
+        // file streams
+        ifstream in;
+        ofstream out;
+    public:
+        explicit FileStreams( const char * inFileName, const char * outFileName )
+            : in(ifstream(inFileName, ios::binary)),
+            out(ofstream(outFileName, ios::binary)) {}
+        // closes sreams when they are no longer needed
+        ~FileStreams() {
+            in.close();
+            out.close();
+        }
+
+        /**
+         * Checks streams
+         * @return if streams are opened and good
+         */
+        bool good() const {
+            return in.is_open() && out.is_open() && in.good() && out.good();
+        }
+
+        // getters
+        /** @return In file stream */
+        ifstream & getIn() { return in; }
+        /** @return Out file stream */
+        ofstream & getOut() { return out; }
+};
+
+
+
 bool decompressFile ( const char * inFileName, const char * outFileName ) {
-  return false;
+    FileStreams streams(inFileName, outFileName);
+    if (!streams.good()) { return false; }
+
+    return false;
 }
+
+
+
 
 bool compressFile ( const char * inFileName, const char * outFileName ) {
     return false;
@@ -31,8 +84,17 @@ bool compressFile ( const char * inFileName, const char * outFileName ) {
 
 #ifndef __PROGTEST__
 bool identicalFiles ( const char * fileName1, const char * fileName2 ) {
-  // todo
-  return false;
+    ifstream in1(fileName1), in2(fileName2);
+    while (true) {
+        char c1 = in1.get();
+        char c2 = in2.get();
+        if (in1.good() && in2.good()) {
+            if (c1 != c2) return false;
+        } else if (in1.eof() && in2.eof()) {
+            return true;
+        } else
+            return false;
+    }
 }
 
 int main ( void ) {
