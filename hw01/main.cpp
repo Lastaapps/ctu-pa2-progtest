@@ -39,16 +39,16 @@ bool decompressFile ( const char * inFileName, const char * outFileName );
 class FileStreams {
     private:
         // file streams
-        ifstream in;
-        ofstream out;
+        ifstream mIn;
+        ofstream mOut;
     public:
         explicit FileStreams( const char * inFileName, const char * outFileName )
-            : in(ifstream(inFileName, ios::binary)),
-            out(ofstream(outFileName, ios::binary)) {}
+            : mIn(ifstream(inFileName, ios::binary)),
+            mOut(ofstream(outFileName, ios::binary)) {}
         // closes sreams when they are no longer needed
         ~FileStreams() {
-            in.close();
-            out.close();
+            mIn.close();
+            mOut.close();
         }
 
         /**
@@ -56,16 +56,94 @@ class FileStreams {
          * @return if streams are opened and good
          */
         bool good() const {
-            return in.is_open() && out.is_open() && in.good() && out.good();
+            return mIn.is_open() && mOut.is_open() && mIn.good() && mOut.good();
         }
 
         // getters
         /** @return In file stream */
-        ifstream & getIn() { return in; }
+        ifstream & getIn() { return mIn; }
         /** @return Out file stream */
-        ofstream & getOut() { return out; }
+        ofstream & getOut() { return mOut; }
 };
 
+class ByteInStream {
+    private:
+        istream & mIn;
+        uint8_t mInByteIndex = 0, mByte = 0;
+
+    public:
+        ByteInStream(istream & in) : mIn(in) {};
+
+    bool getBit() {
+        if (!good()) return false;
+
+        if (mInByteIndex == 0) {
+            mByte = mIn.get();
+            //cout << "Read byte: " << mByte << " - " << (int) mByte << endl;
+        }
+        bool val = (mByte & (1u << (7u - mInByteIndex))) > 0;
+        //cout << "Getting " << val << ", index: " << inByteIndex << endl;
+        mInByteIndex &= ~-(++mInByteIndex == 8);
+        return val;
+    };
+
+    uint8_t readByte() {
+        uint8_t val = 0;
+        for (uint8_t i = 0; i < 8; i++) {
+            val = val << 1;
+            if (getBit()) val++;
+            //cout << "Connected " << (int)val << endl;
+        }
+        return val;
+    }
+
+    bool good() const {
+        return mInByteIndex != 1 || mIn.good();
+    }
+    bool eof() const {
+        return mInByteIndex == 1 && mIn.eof();
+    }
+    bool fail() const {
+        return !(good() || eof());
+    }
+};
+
+class ByteOutStream {
+    private:
+        ostream & mOut;
+        uint8_t mOutByteIndex = 0, mByte = 0;
+
+    public:
+        ByteOutStream(ostream & out) : mOut(out) {};
+
+    void putBit(bool val) {
+
+        mByte = mByte << 1;
+        if (val) mByte++;
+        if (mOutByteIndex == 7) {
+            mOut.put(mByte);
+        }
+        //cout << "Putting " << val << " index " << (int)mOutByteIndex << endl;
+        mOutByteIndex &= ~-(++mOutByteIndex == 8);
+    };
+
+    void putByte(uint8_t byte) {
+        for (uint8_t i = 0; i < 8; i++) {
+            putBit((byte & (1u << (7u - i))) > 0);
+        }
+    }
+
+    bool good() const {
+        return mOut.good();
+    }
+    bool fail() const {
+        return !good();
+    }
+    void close() {
+        // fill and flush lastest byte
+        while(mOutByteIndex != 0) putBit(false);
+    }
+};
 
 
 bool decompressFile ( const char * inFileName, const char * outFileName ) {
@@ -97,10 +175,43 @@ bool identicalFiles ( const char * fileName1, const char * fileName2 ) {
     }
 }
 
+void testByteInStream() {
+
+    istringstream sStream("abc");
+    ByteInStream bStream(sStream);
+
+    assert (bStream.readByte() == 'a');
+    assert (bStream.readByte() == 'b');
+    assert (bStream.readByte() == 'c');
+    assert ( bStream.good());
+    assert (!bStream.eof());
+    assert (!bStream.fail());
+    bStream.getBit();
+    assert (!bStream.good());
+    assert ( bStream.eof());
+    assert (!bStream.fail());
+}
+
+void testByteOutStream() {
+    stringstream sOut;
+    ByteOutStream bOut(sOut);
+    bOut.putByte('a');
+    bOut.putByte('b');
+    bOut.putByte('c');
+    assert( bOut.good());
+    assert(!bOut.fail());
+    assert(sOut.str() == "abc");
+}
+
 int main ( void ) {
+
+    testByteInStream();
+    testByteOutStream();
 
     assert( identicalFiles( "tests/test0.orig", "tests/test0.orig"));
     assert(!identicalFiles( "tests/test0.orig", "tests/test1.orig"));
+
+    return 0;
 
     assert( decompressFile( "tests/test0.huf",  "tempfile" ));
     assert( identicalFiles( "tests/test0.orig", "tempfile" ));
