@@ -4,7 +4,7 @@
 # Variables to control Makefile operation
 
 CC = g++
-CFLAGS = -Wall -pedantic -std=c++17 -Wshadow -Wno-long-long -Werror
+CFLAGS = -Wall -pedantic -std=c++17 -Wshadow -Wno-long-long -Werror -O2
 DBFLAGS = $(CFLAGS) -fsanitize=address -g
 
 # The build target

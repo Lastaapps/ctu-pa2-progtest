@@ -67,88 +67,138 @@ class FileStreams {
         ofstream & getOut() { return mOut; }
 };
 
+/**
+ * Conterts normal istream reading byte info one reading bits
+ */
 class ByteInStream {
     private:
+        // stream from with are we reading
         istream & mIn;
-        uint8_t mInByteIndex = 0, mByte = 0;
+        //latest byte read
+        uint8_t mInByteIndex = 0;
+        // index in the byte from the MSB
+        uint8_t mByte = 0;
 
     public:
+        /**
+         * @param in stream to read bits from
+         */
         explicit ByteInStream(istream & in) : mIn(in) {};
 
-    bool readBit() {
-        if (!good()) return false;
+        /**
+          * Reads the next bit from this stream
+          * @return true for 1 and false for 0 bit
+          */
+        bool readBit() {
+            if (!good()) return false;
 
-        if (mInByteIndex == 0) {
-            mByte = mIn.get();
-            //cout << "Read byte: " << mByte << " - " << (int) mByte << endl;
+            // get new byte from stream
+            if (mInByteIndex == 0) {
+                mByte = mIn.get();
+                // cout << "Read byte: " << mByte << " - " << (int) mByte << endl;
+            }
+            bool val = (mByte & (1u << (7u - mInByteIndex))) > 0;
+            // cout << "Getting " << val << ", index: " << inByteIndex << endl;
+            mInByteIndex &= ~-(++mInByteIndex == 8);
+            return val;
+        };
+
+        /**
+          * Reads the next byte from this stream
+          * @return byte of data
+          */
+        uint8_t readByte() {
+            uint8_t val = 0;
+            for (uint8_t i = 0; i < 8; i++) {
+                const bool isTrue = readBit();
+                val = val << 1;
+                if (isTrue) val++;
+                // cout << "Connected " << isTrue << " - " << (int)val << endl;
+            }
+            return val;
         }
-        bool val = (mByte & (1u << (7u - mInByteIndex))) > 0;
-        //cout << "Getting " << val << ", index: " << inByteIndex << endl;
-        mInByteIndex &= ~-(++mInByteIndex == 8);
-        return val;
-    };
 
-    uint8_t readByte() {
-        uint8_t val = 0;
-        for (uint8_t i = 0; i < 8; i++) {
-            const bool isTrue = readBit();
-            val = val << 1;
-            if (isTrue) val++;
-            //cout << "Connected " << isTrue << " - " << (int)val << endl;
+        // same as normal streams
+        bool good() const {
+            return mInByteIndex != 1 || mIn.good();
         }
-        return val;
-    }
-
-    bool good() const {
-        return mInByteIndex != 1 || mIn.good();
-    }
-    bool eof() const {
-        return mInByteIndex == 1 && mIn.eof();
-    }
-    bool fail() const {
-        return !(good() || eof());
-    }
+        bool eof() const {
+            return mInByteIndex == 1 && mIn.eof();
+        }
+        bool fail() const {
+            return !(good() || eof());
+        }
 };
 
+/**
+ * Writes single bits to a stream
+ */
 class ByteOutStream {
     private:
+        // stream to write bits to
         ostream & mOut;
-        uint8_t mOutByteIndex = 0, mByte = 0;
+        // wich bit in byte is written right now
+        uint8_t mOutByteIndex = 0;
+        // current cached byte of bits writen
+        uint8_t mByte = 0;
 
     public:
         explicit ByteOutStream(ostream & out) : mOut(out) {};
 
-    void putBit(bool val) {
+        /**
+         * writes single bit into a stream
+         * @param bit bit to write, true for 1 and false for 0
+         */
+        void putBit(bool bit) {
 
-        mByte = mByte << 1;
-        if (val) mByte++;
-        if (mOutByteIndex == 7) {
-            mOut.put(mByte);
+            mByte = mByte << 1;
+            if (bit) mByte++;
+            // flushed whole byte into a stream
+            if (mOutByteIndex == 7) {
+                mOut.put(mByte);
+            }
+            //cout << "Putting " << val << " index " << (int)mOutByteIndex << endl;
+            mOutByteIndex &= ~-(++mOutByteIndex == 8);
+        };
+
+        /**
+         * Writes entire byte into the stream
+         * @param byte byte to write
+         */
+        void putByte(uint8_t byte) {
+            for (uint8_t i = 0; i < 8; i++) {
+                putBit((byte & (1u << (7u - i))) > 0);
+            }
         }
-        //cout << "Putting " << val << " index " << (int)mOutByteIndex << endl;
-        mOutByteIndex &= ~-(++mOutByteIndex == 8);
-    };
 
-    void putByte(uint8_t byte) {
-        for (uint8_t i = 0; i < 8; i++) {
-            putBit((byte & (1u << (7u - i))) > 0);
+        // same as while using normal streams
+        bool good() const {
+            return mOut.good();
         }
-    }
+        bool eof() const {
+            return mOut.eof();
+        }
+        bool fail() const {
+            return mOut.fail() || mOut.bad();
+        }
 
-    bool good() const {
-        return mOut.good();
-    }
-    bool fail() const {
-        return !good();
-    }
-    void close() {
-        // fill and flush lastest byte
-        while(mOutByteIndex != 0) putBit(false);
-    }
+        /**
+         * Flushes the lates byte into a stream, fill the remaing bit with 0
+         */
+        void close() {
+            // fill and flush lastest byte
+            while(mOutByteIndex != 0) putBit(false);
+        }
 };
+
+
+
 
 typedef char UtfChar;
 
+/**
+ * Represents one node in compression tree, a letter or a fork
+ */
 class TNode {
     private:
         bool mIsLetter;
@@ -176,22 +226,38 @@ void TNode::printTree(ostream & out) const {
 
 
 
-
+/**
+ * Holds decompression tree and runs methods on it
+ */
 class Tree {
     private:
         TNode * mRoot = nullptr;
 
+        /**
+         * Parses binary tree from input stream
+         * @param in stream to get bits from
+         * @retrun dynamically allocated root item of a tree
+         */
         TNode * parseTree(ByteInStream & in);
+        /**
+         * Frees dynamically allocated tree from memory
+         * @param root tree node to free them all
+         */
         void free(TNode * node);
+
     public:
-        Tree(ByteInStream & in) {
-            mRoot = parseTree(in);
-        }
+        Tree(ByteInStream & in): mRoot(parseTree(in)) {}
         ~Tree() {
             free(mRoot);
             mRoot = nullptr;
         }
+
         void printTree(ostream & out) const;
+        /**
+         * Reads bits from stream and finds corresponding char
+         * @param in stream to read from
+         * @param letter place to save output to
+         */
         void find(ByteInStream & in, UtfChar & letter) const;
     private:
         void find(const TNode * node, ByteInStream & in, UtfChar & letter) const;
@@ -242,9 +308,23 @@ void Tree::find(const TNode * node, ByteInStream & in, UtfChar & letter) const {
     }
 }
 
+
+
+
+/**
+ * Reads all the chunks in a stream and writes them to a output stream
+ * @param tree decompression table to read from
+ * @param in stream to read bits, later codes, from
+ * @param out stream to write letter to
+ * @retrun true if all the operations succeded
+ */
 bool parseChunks(Tree & tree, ByteInStream & in, ostream & out);
+/**
+ * Decides how long is the next chunk going to be
+ * @param in stream to read bits from
+ * @retrun next chunk size
+ */
 uint16_t readChunkSize(ByteInStream & in);
-bool isReadCompletelly(FileStreams & streams);
 
 
 const size_t chunkDefSize = 4096;
@@ -253,12 +333,14 @@ bool parseChunks(Tree & tree, ByteInStream & in, ostream & out) {
         size_t size = readChunkSize(in);
         //cout << "Chunksize: " << size << endl;
 
+        // go trough chars
         for (size_t i = 0; i < size; i++) {
             UtfChar c;
             tree.find(in, c);
             out.put(c);
             //cout << "Read char: " << c << " - " << (int)c << endl;
         }
+        //latest chunk is always smaller
         if (chunkDefSize != size)
             return true;
     }
@@ -269,6 +351,7 @@ uint16_t readChunkSize(ByteInStream & in) {
     bool isDefault = in.readBit();
     if (isDefault) return chunkDefSize;
 
+    // read 12-bit number
     uint16_t val = 0;
     for (uint8_t i = 0; i < 12; i++) {
         val = val << 1;
@@ -276,6 +359,16 @@ uint16_t readChunkSize(ByteInStream & in) {
     }
     return val;
 }
+
+
+
+/**
+ * Checks if all the operations completed as expected
+ * Checks if there are no more bytes in input stream
+ * @param streams streams to check
+ * @retrun true if everything is good
+ */
+bool isReadCompletelly(FileStreams & streams);
 
 bool isReadCompletelly(FileStreams & streams) {
     if (!streams.getIn().good()) return false;
@@ -285,6 +378,8 @@ bool isReadCompletelly(FileStreams & streams) {
     streams.getIn().peek();
     return streams.getIn().eof();
 }
+
+
 
 bool decompressFile ( const char * inFileName, const char * outFileName ) {
     FileStreams streams(inFileName, outFileName);
