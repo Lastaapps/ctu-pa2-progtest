@@ -74,7 +74,7 @@ class ByteInStream {
     public:
         ByteInStream(istream & in) : mIn(in) {};
 
-    bool getBit() {
+    bool readBit() {
         if (!good()) return false;
 
         if (mInByteIndex == 0) {
@@ -91,7 +91,7 @@ class ByteInStream {
         uint8_t val = 0;
         for (uint8_t i = 0; i < 8; i++) {
             val = val << 1;
-            if (getBit()) val++;
+            if (readBit()) val++;
             //cout << "Connected " << (int)val << endl;
         }
         return val;
@@ -145,10 +145,85 @@ class ByteOutStream {
     }
 };
 
+typedef size_t NodeCode;
+typedef char UtfChar;
+
+class TNode {
+    private:
+        NodeCode mCode;
+        bool mIsLetter;
+        UtfChar mLetter;
+        TNode * mLeft, * mRight;
+    public:
+        TNode(NodeCode code, UtfChar c)
+            : mCode(code), mIsLetter(true), mLetter(c),
+            mLeft(nullptr), mRight(nullptr) {};
+        TNode(NodeCode code, TNode * left, TNode * right)
+            : mCode(code), mIsLetter(false),  mLetter('\0'),
+            mLeft(left), mRight(right) {};
+
+        // bool isLetter()     const { return mIsLetter; }
+        // UtfChar getLetter() const { return mLetter;     }
+        // TNode * getLeft()   const { return mLeft;     }
+        // TNode * getRight()  const { return mRight;    }
+
+        void printTree(ostream & out);
+        void free();
+        bool find(const NodeCode code, UtfChar & letter) const {
+            if (mIsLetter) {
+                if (mCode == code) {
+                    letter =mLetter;
+                    return true;
+                } else return false;
+            } else {
+                //TODO do it smart, faster
+                return mLeft -> find(code, letter)
+                    || mRight -> find(code, letter);
+            }
+        }
+};
+
+void TNode::printTree(ostream & out) {
+    if (mIsLetter) cout << mLetter << " - " << setbase(2) << mCode << endl;
+    else {
+        mLeft -> printTree(out);
+        mRight -> printTree(out);
+    }
+}
+void TNode::free() {
+    if (!mIsLetter) {
+        mLeft -> free();
+        mRight -> free();
+        mLeft = nullptr;
+        mRight = nullptr;
+    } else {
+        mLetter = '\0';
+    }
+    mCode = 0;
+    delete this;
+}
+
+TNode * parseTree(ByteInStream & in, NodeCode code) {
+    bool isLetter = in.readBit();
+    if (isLetter) {
+        //cout << "parsing letter" << endl;
+        return new TNode(code, in.readByte());
+    } else {
+        //cout << "parsing nodes" << endl;
+        code = code << 1;
+        return new TNode(code, parseTree(in, code), parseTree(in, code + 1));
+    }
+}
 
 bool decompressFile ( const char * inFileName, const char * outFileName ) {
     FileStreams streams(inFileName, outFileName);
     if (!streams.good()) { return false; }
+    ByteInStream in(streams.getIn());
+    ByteOutStream out(streams.getOut());
+
+    TNode * keys = parseTree(in, 0);
+    keys -> printTree(cout);
+    keys -> free();
 
     return false;
 }
@@ -186,7 +261,7 @@ void testByteInStream() {
     assert ( bStream.good());
     assert (!bStream.eof());
     assert (!bStream.fail());
-    bStream.getBit();
+    bStream.readBit();
     assert (!bStream.good());
     assert ( bStream.eof());
     assert (!bStream.fail());
@@ -203,10 +278,28 @@ void testByteOutStream() {
     assert(sOut.str() == "abc");
 }
 
+void testTreeParsing() {
+    ifstream fIn ("tests/test0.huf", ios::binary);
+    ByteInStream in(fIn);
+    TNode * tree = parseTree(in, 0);
+    UtfChar c;
+
+    assert(tree->find(6, c) && c == 'K');
+    assert(tree->find(0, c) && c == 'o');
+    assert(tree->find(7, c) && c == 'l');
+    assert(tree->find(4, c) && c == 't');
+    assert(tree->find(5, c) && c == 'c');
+
+    assert(!tree->find(9, c));
+
+    tree -> free();
+}
+
 int main ( void ) {
 
     testByteInStream();
     testByteOutStream();
+    testTreeParsing();
 
     assert( identicalFiles( "tests/test0.orig", "tests/test0.orig"));
     assert(!identicalFiles( "tests/test0.orig", "tests/test1.orig"));
