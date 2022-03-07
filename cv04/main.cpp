@@ -13,15 +13,94 @@ using namespace std;
 #endif /* __PROGTEST__ */
 
 class CTimeStamp {
-    // TODO
+    private:
+        uint16_t mYear, mMonth, mDay, mHour, mMinute, mSecond;
+
+    public:
+        explicit CTimeStamp(
+                uint16_t year, uint16_t month, uint16_t day,
+                uint16_t hour, uint16_t minute, uint16_t second)
+            : mYear(year), mMonth(month), mDay(day),
+            mHour(hour), mMinute(minute), mSecond(second) {}
+
+        bool isBefore( CTimeStamp & time) const {
+            if (mYear   < time.mYear  ) return true;
+            if (mYear   > time.mYear  ) return false;
+            if (mMonth  < time.mMonth ) return true;
+            if (mMonth  > time.mMonth ) return false;
+            if (mDay    < time.mDay   ) return true;
+            if (mDay    > time.mDay   ) return false;
+            if (mHour   < time.mHour  ) return true;
+            if (mHour   > time.mHour  ) return false;
+            if (mMinute < time.mMinute) return true;
+            if (mMinute > time.mMinute) return false;
+            if (mSecond < time.mSecond) return true;
+            if (mSecond > time.mSecond) return false;
+            return true; // are the same
+        }
 };
 
 class CContact {
-    // TODO
+    private:
+        CTimeStamp mTime;
+        int mNumber1, mNumber2;
+    public:
+        explicit CContact(CTimeStamp time, int number1, int number2)
+            : mTime(time), mNumber1(number1), mNumber2(number2) {}
+
+        bool hasNumber(const int number, int & other) const {
+            if (mNumber1 == number) {
+                other = mNumber2;
+                return true;
+            }
+            if (mNumber2 == number) {
+                other = mNumber1;
+                return true;
+            }
+            return false;
+        }
+        bool hasSameNubers() const {
+            return mNumber1 == mNumber2;
+        }
+        CTimeStamp & getTime() {
+            return mTime;
+        }
 };
 
 class CEFaceMask {
-    // TODO
+    private:
+        vector<CContact> contacts;
+    public:
+        CEFaceMask & addContact(CContact contact) {
+            if (contact.hasSameNubers()) return *this;
+            contacts.push_back(contact);
+            return *this;
+        }
+
+        vector<int> listContacts(const int number) const {
+            vector<int> list;
+            int numb;
+            for (auto & c : contacts) {
+                if (c.hasNumber(number, numb)) {
+                    list.push_back(numb);
+                }
+            }
+            return list;
+        }
+
+        vector<int> listContacts(const int number, CTimeStamp from, CTimeStamp to) {
+            vector<int> list;
+            int numb;
+            for (auto & c : contacts) {
+                if (c.hasNumber(number, numb)
+                        && from.isBefore(c.getTime())
+                        && c.getTime().isBefore(to)
+                   ) {
+                    list.push_back(numb);
+                }
+            }
+            return list;
+        }
 };
 
 
