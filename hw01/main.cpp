@@ -31,9 +31,6 @@ bool decompressFile ( const char * inFileName, const char * outFileName );
 
 #endif /* __PROGTEST__ */
 
-#define PRINT if(true)
-
-
 /**
  * Stores in and out file streams
  */
@@ -89,34 +86,13 @@ class ByteInStream {
           * Reads the next bit from this stream
           * @return true for 1 and false for 0 bit
           */
-        bool readBit() {
-            if (!good()) return false;
-
-            // get new byte from stream
-            if (mInByteIndex == 0) {
-                mByte = mIn.get();
-                // cout << "Read byte: " << mByte << " - " << (int) mByte << endl;
-            }
-            bool val = (mByte & (1u << (7u - mInByteIndex))) > 0;
-            // cout << "Getting " << val << ", index: " << inByteIndex << endl;
-            mInByteIndex &= ~-(++mInByteIndex == 8);
-            return val;
-        };
+        bool readBit();
 
         /**
           * Reads the next byte from this stream
           * @return byte of data
           */
-        uint8_t readByte() {
-            uint8_t val = 0;
-            for (uint8_t i = 0; i < 8; i++) {
-                const bool isTrue = readBit();
-                val = val << 1;
-                if (isTrue) val++;
-                // cout << "Connected " << isTrue << " - " << (int)val << endl;
-            }
-            return val;
-        }
+        uint8_t readByte();
 
         // same as normal streams
         bool good() const {
@@ -191,6 +167,9 @@ class ByteOutStream {
         }
 };
 
+/**
+ * Represents up to 4 bytes of an utf character
+ */
 typedef uint64_t UtfChar;
 
 class UtfParser {
@@ -215,61 +194,14 @@ class UtfParser {
         staticconst Pattern patOther = Pattern{0b10000000u, 0b01000000u};
 
 public:
-        bool readUtfChar(UtfChar & target) const {
-            uint8_t byte = mIn.readByte();
-            MatchResult res = matchByte(byte);
-            switch (res) {
-                case MatchResult::ONE:
-                    target = byte;
-                    return true;
-
-                case MatchResult::TWO:
-                    return readBytes(byte, 1, target);
-
-                case MatchResult::THREE:
-                    return readBytes(byte, 2, target);
-
-                case MatchResult::FOUR:
-                    return readBytes(byte, 3, target);
-                default:
-                    return false;
-            }
-            return false;
-        }
+        bool readUtfChar(UtfChar & target) const;
 
 private:
-        bool readBytes(const uint8_t alreadyRead, const uint8_t bytesLeft, UtfChar & out) const {
-            out = alreadyRead;
-            for (uint8_t i = 0; i < bytesLeft; i++) {
-                uint8_t byte = mIn.readByte();
-                if (!match(byte, patOther))
-                    return false;
-                out <<= 8;
-                out += byte;
-            }
-            return true;
-        }
+        bool readBytes(const uint8_t alreadyRead, const uint8_t bytesLeft, UtfChar & out) const;
 
-        MatchResult matchByte(const uint8_t byte) const {
-            if (match(byte, patOne))    return MatchResult::ONE;
-            if (match(byte, patTwo))    return MatchResult::TWO;
-            if (match(byte, patThree))  return MatchResult::THREE;
-            if (match(byte, patFour))   return MatchResult::FOUR;
-            if (match(byte, patOther))  return MatchResult::OTHER;
-            return MatchResult::FAIL;
-        }
+        MatchResult matchByte(const uint8_t byte) const;
 
-        bool match(const uint8_t byte, const Pattern pat) const {
-            return ((pat.pat & byte) == pat.pat)
-                && ((pat.inv & ~byte) == pat.inv);
-            /* First nostalgic version
-               uint8_t inv = ~byte;
-               for (uint8_t i = 0b10000000u; i > 0; i >>= 1) {
-               if (((pat.pat & i) && !(byte & i)) || ((pat.inv & i) && !(inv & i)))
-               return false;
-               }
-               */
-        }
+        bool match(const uint8_t byte, const Pattern pat) const;
 };
 
 /**
@@ -291,14 +223,6 @@ class TNode {
         void printTree(ostream & out) const;
         friend class Tree;
 };
-
-void TNode::printTree(ostream & out) const {
-    if (mIsLetter) cout << mLetter << " (" << (int) mLetter << ")" << endl;
-    else {
-        mLeft -> printTree(out);
-        mRight -> printTree(out);
-    }
-}
 
 
 
@@ -345,6 +269,83 @@ class Tree {
         void find(const TNode * node, UtfChar & letter) const;
 };
 
+
+
+// --- Final output and chunk parsing ----------------------------------------
+/**
+ * Reads all the chunks in a stream and writes them to a output stream
+ * @param tree decompression table to read from
+ * @param in stream to read bits, later codes, from
+ * @param out stream to write letter to
+ * @retrun true if all the operations succeded
+ */
+bool parseChunks(Tree & tree, ByteInStream & in, ostream & out);
+/**
+ * Decides how long is the next chunk going to be
+ * @param in stream to read bits from
+ * @retrun next chunk size
+ */
+uint16_t readChunkSize(ByteInStream & in);
+/**
+ * Writes a letter to a stream respecting it's UtfCharacter
+ * @param stream to write into
+ * @param letter utf char to write
+ */
+void writeUrfChar(ostream & out, const UtfChar & letter);
+/**
+ * Checks if all the operations completed as expected
+ * Checks if there are no more bytes in input stream
+ * @param streams streams to check
+ * @retrun true if everything is good
+ */
+bool isReadCompletelly(FileStreams & streams);
+
+
+
+
+// --- Functions definitions --------------------------------------------------
+
+// --- ByteInStream -----------------------------------------------------------
+bool ByteInStream::readBit() {
+    if (!good()) return false;
+
+    // get new byte from stream
+    if (mInByteIndex == 0) {
+        mByte = mIn.get();
+        // cout << "Read byte: " << mByte << " - " << (int) mByte << endl;
+    }
+    bool val = (mByte & (1u << (7u - mInByteIndex))) > 0;
+    // cout << "Getting " << val << ", index: " << inByteIndex << endl;
+    mInByteIndex &= ~-(++mInByteIndex == 8);
+    return val;
+}
+
+uint8_t ByteInStream::readByte() {
+    uint8_t val = 0;
+    for (uint8_t i = 0; i < 8; i++) {
+        const bool isTrue = readBit();
+        val = val << 1;
+        if (isTrue) val++;
+        // cout << "Connected " << isTrue << " - " << (int)val << endl;
+    }
+    return val;
+}
+
+
+
+
+// --- Tree and TNode definitions ---------------------------------------------
+void TNode::printTree(ostream & out) const {
+    if (mIsLetter) {
+        writeUrfChar(out, mLetter);
+        out << " (" << (int) mLetter << ")" << endl;
+    }
+    else {
+        mLeft -> printTree(out);
+        mRight -> printTree(out);
+    }
+}
+
 void Tree::free(TNode * node) {
     if (!(node -> mIsLetter)) {
         free(node -> mLeft);
@@ -381,7 +382,6 @@ void Tree::printTree(ostream & out) const {
     cout << "Printing tree done" << endl;
 }
 
-
 inline void Tree::find(UtfChar & letter) const {
     return find(mRoot, letter);
 }
@@ -400,28 +400,67 @@ void Tree::find(const TNode * node, UtfChar & letter) const {
 
 
 
-/**
- * Reads all the chunks in a stream and writes them to a output stream
- * @param tree decompression table to read from
- * @param in stream to read bits, later codes, from
- * @param out stream to write letter to
- * @retrun true if all the operations succeded
- */
-bool parseChunks(Tree & tree, ByteInStream & in, ostream & out);
-/**
- * Decides how long is the next chunk going to be
- * @param in stream to read bits from
- * @retrun next chunk size
- */
-uint16_t readChunkSize(ByteInStream & in);
-/**
- * Writes a letter to a stream respecting it's UtfCharacter
- * @param stream to write into
- * @param letter utf char to write
- */
-void writeUrfChar(ostream & out, const UtfChar & letter);
+
+// --- UtfParser definitions --------------------------------------------------
+#define MR UtfParser::MatchResult 
+bool UtfParser::readUtfChar(UtfChar & target) const {
+    uint8_t byte = mIn.readByte();
+    MR res = matchByte(byte);
+    switch (res) {
+        case MR::ONE:
+            target = byte;
+            return true;
+        case MR::TWO:
+            return readBytes(byte, 1, target);
+        case MR::THREE:
+            return readBytes(byte, 2, target);
+        case MR::FOUR:
+            return readBytes(byte, 3, target);
+        default:
+            return false;
+    }
+    return false;
+}
+
+bool UtfParser::readBytes(const uint8_t alreadyRead, const uint8_t bytesLeft, UtfChar & out) const {
+    out = alreadyRead;
+    for (uint8_t i = 0; i < bytesLeft; i++) {
+        uint8_t byte = mIn.readByte();
+        if (!match(byte, patOther))
+            return false;
+        out <<= 8;
+        out += byte;
+    }
+    return true;
+}
+
+MR UtfParser::matchByte(const uint8_t byte) const {
+    if (match(byte, patOne))    return MatchResult::ONE;
+    if (match(byte, patTwo))    return MatchResult::TWO;
+    if (match(byte, patThree))  return MatchResult::THREE;
+    if (match(byte, patFour))   return MatchResult::FOUR;
+    if (match(byte, patOther))  return MatchResult::OTHER;
+    return MatchResult::FAIL;
+}
+
+bool UtfParser::match(const uint8_t byte, const Pattern pat) const {
+    return ((pat.pat & byte) == pat.pat)
+        && ((pat.inv & ~byte) == pat.inv);
+    /* First nostalgic version
+       uint8_t inv = ~byte;
+       for (uint8_t i = 0b10000000u; i > 0; i >>= 1) {
+       if (((pat.pat & i) && !(byte & i)) || ((pat.inv & i) && !(inv & i)))
+       return false;
+       }
+       */
+}
 
 
+
+
+
+
+// --- Chunk management and output --------------------------------------------
 const size_t chunkDefSize = 4096;
 bool parseChunks(Tree & tree, ByteInStream & in, ostream & out) {
     while(in.good() && out.good()) {
@@ -465,15 +504,6 @@ void writeUrfChar(ostream & out, const UtfChar & letter) {
     }
 }
 
-
-/**
- * Checks if all the operations completed as expected
- * Checks if there are no more bytes in input stream
- * @param streams streams to check
- * @retrun true if everything is good
- */
-bool isReadCompletelly(FileStreams & streams);
-
 bool isReadCompletelly(FileStreams & streams) {
     if (!streams.getIn().good()) return false;
     if (!streams.getOut().good()) return false;
@@ -485,6 +515,8 @@ bool isReadCompletelly(FileStreams & streams) {
 
 
 
+
+// --- Asingment --------------------------------------------------------------
 bool decompressFile ( const char * inFileName, const char * outFileName ) {
     FileStreams streams(inFileName, outFileName);
     if (!streams.good()) { return false; }
@@ -492,7 +524,7 @@ bool decompressFile ( const char * inFileName, const char * outFileName ) {
     //ByteOutStream out(streams.getOut());
 
     Tree tree(in);
-    tree.printTree(cout);
+    //tree.printTree(cout);
 
     if (!parseChunks(tree, in, streams.getOut())) {
         return false;
