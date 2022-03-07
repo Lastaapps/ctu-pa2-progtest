@@ -18,12 +18,16 @@ class CTimeStamp {
 
     public:
         explicit CTimeStamp(
-                uint16_t year, uint16_t month, uint16_t day,
-                uint16_t hour, uint16_t minute, uint16_t second)
+                const uint16_t year,
+                const uint16_t month,
+                const uint16_t day,
+                const uint16_t hour,
+                const uint16_t minute,
+                const uint16_t second)
             : mYear(year), mMonth(month), mDay(day),
             mHour(hour), mMinute(minute), mSecond(second) {}
 
-        bool isBefore( CTimeStamp & time) const {
+        bool isBefore( const CTimeStamp & time) const {
             if (mYear   < time.mYear  ) return true;
             if (mYear   > time.mYear  ) return false;
             if (mMonth  < time.mMonth ) return true;
@@ -38,6 +42,10 @@ class CTimeStamp {
             if (mSecond > time.mSecond) return false;
             return true; // are the same
         }
+
+        void print() const {
+            cout << "(" << mYear << "-" << mMonth << "-" << mDay << "-" << mHour << "-" << mMinute << "-" << mSecond << ")";
+        }
 };
 
 class CContact {
@@ -45,7 +53,7 @@ class CContact {
         CTimeStamp mTime;
         int mNumber1, mNumber2;
     public:
-        explicit CContact(CTimeStamp time, int number1, int number2)
+        explicit CContact(const CTimeStamp time, const int number1, const int number2)
             : mTime(time), mNumber1(number1), mNumber2(number2) {}
 
         bool hasNumber(const int number, int & other) const {
@@ -62,8 +70,12 @@ class CContact {
         bool hasSameNubers() const {
             return mNumber1 == mNumber2;
         }
-        CTimeStamp & getTime() {
+        const CTimeStamp & getTime() const {
             return mTime;
+        }
+        void print() const {
+            mTime.print();
+            cout << "[" << mNumber1 << " <-> " << mNumber2 << "]";
         }
 };
 
@@ -77,29 +89,74 @@ class CEFaceMask {
             return *this;
         }
 
-        vector<int> listContacts(const int number) const {
-            vector<int> list;
-            int numb;
+        void print() const {
             for (auto & c : contacts) {
-                if (c.hasNumber(number, numb)) {
-                    list.push_back(numb);
-                }
+                c.print();
+                cout << endl;
             }
-            return list;
         }
 
-        vector<int> listContacts(const int number, CTimeStamp from, CTimeStamp to) {
-            vector<int> list;
+        struct ContactOrder {
+            size_t order;
+            int number;
+        };
+        vector<int> listContacts(const int number) const {
+            vector<ContactOrder> list;
+            size_t order = 0;
             int numb;
-            for (auto & c : contacts) {
+            for (const auto & c : contacts) {
+                if (c.hasNumber(number, numb)) {
+                    list.push_back({order++, numb});
+                }
+            }
+            return filterAndSort(list);
+        }
+
+        vector<int> listContacts(const int number, const CTimeStamp from, const CTimeStamp to) const {
+            vector<ContactOrder> list;
+            size_t order = 0;
+            int numb;
+            for (const auto & c : contacts) {
                 if (c.hasNumber(number, numb)
                         && from.isBefore(c.getTime())
                         && c.getTime().isBefore(to)
                    ) {
-                    list.push_back(numb);
+                    list.push_back({order++, numb});
                 }
             }
-            return list;
+            return filterAndSort(list);
+        }
+
+        static bool compareNumbers(const ContactOrder & o1, const ContactOrder & o2) {
+            return o1.number < o2.number;
+        }
+        static bool compareOrders(const ContactOrder & o1, const ContactOrder & o2) {
+            return o1.order < o2.order;
+        }
+        vector<int> filterAndSort(vector<ContactOrder> & list) const {
+            if (list.size() == 0) {
+                vector<int> empty;
+                return empty;
+            }
+
+            sort(list.begin(), list.end(), compareNumbers);
+
+            vector<ContactOrder> unique;
+            ContactOrder & latest = list.at(0);
+            unique.push_back(latest);
+            for (const auto & c : list) {
+                if (c.number != latest.number) {
+                    unique.push_back(c);
+                    latest = c;
+                }
+            }
+
+            vector<int> toReturn;
+            sort(unique.begin(), unique.end(), compareOrders);
+            for (const auto & c : unique) {
+                toReturn.push_back(c.number);
+            }
+            return toReturn;
         }
 };
 
@@ -114,6 +171,9 @@ int main () {
     test.addContact(CContact ( CTimeStamp ( 2021, 2, 21, 18, 0, 0 ), 123456789, 999888777 ) );
     test.addContact(CContact ( CTimeStamp ( 2021, 1, 5, 18, 0, 0 ), 123456789, 456456456 ) );
     test.addContact(CContact ( CTimeStamp ( 2021, 2, 1, 0, 0, 0 ), 123456789, 123456789 ) );
+
+    //test.print();
+    //for (int x : test.listContacts ( 123456789 )) cout << x << endl;
     assert(test.listContacts ( 123456789 ) == (vector<int> {999888777, 111222333, 456456456}) );
     assert(test.listContacts ( 999888777 ) == (vector<int> {123456789, 555000222}) );
     assert(test.listContacts ( 191919191 ) == (vector<int> {}) );
