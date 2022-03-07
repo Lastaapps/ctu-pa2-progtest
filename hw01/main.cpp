@@ -191,10 +191,86 @@ class ByteOutStream {
         }
 };
 
+typedef uint64_t UtfChar;
 
+class UtfParser {
+    private:
+        ByteInStream & mIn;
+    public:
+        explicit UtfParser(ByteInStream & in): mIn(in) {}
 
+    private:
 
-typedef char UtfChar;
+        enum class MatchResult {FAIL, ONE, TWO, THREE, FOUR, OTHER};
+
+        struct Pattern {
+            const uint8_t pat, inv;
+        };
+
+#define staticconst static constexpr const
+        staticconst Pattern patOne   = Pattern{0b00000000u, 0b10000000u};
+        staticconst Pattern patTwo   = Pattern{0b11000000u, 0b00100000u};
+        staticconst Pattern patThree = Pattern{0b11100000u, 0b00010000u};
+        staticconst Pattern patFour  = Pattern{0b11110000u, 0b00001000u};
+        staticconst Pattern patOther = Pattern{0b10000000u, 0b01000000u};
+
+public:
+        bool readUtfChar(UtfChar & target) const {
+            uint8_t byte = mIn.readByte();
+            MatchResult res = matchByte(byte);
+            switch (res) {
+                case MatchResult::ONE:
+                    target = byte;
+                    return true;
+
+                case MatchResult::TWO:
+                    return readBytes(byte, 1, target);
+
+                case MatchResult::THREE:
+                    return readBytes(byte, 2, target);
+
+                case MatchResult::FOUR:
+                    return readBytes(byte, 3, target);
+                default:
+                    return false;
+            }
+            return false;
+        }
+
+private:
+        bool readBytes(const uint8_t alreadyRead, const uint8_t bytesLeft, UtfChar & out) const {
+            out = alreadyRead;
+            for (uint8_t i = 0; i < bytesLeft; i++) {
+                uint8_t byte = mIn.readByte();
+                if (!match(byte, patOther))
+                    return false;
+                out <<= 8;
+                out += byte;
+            }
+            return true;
+        }
+
+        MatchResult matchByte(const uint8_t byte) const {
+            if (match(byte, patOne))    return MatchResult::ONE;
+            if (match(byte, patTwo))    return MatchResult::TWO;
+            if (match(byte, patThree))  return MatchResult::THREE;
+            if (match(byte, patFour))   return MatchResult::FOUR;
+            if (match(byte, patOther))  return MatchResult::OTHER;
+            return MatchResult::FAIL;
+        }
+
+        bool match(const uint8_t byte, const Pattern pat) const {
+            return ((pat.pat & byte) == pat.pat)
+                && ((pat.inv & ~byte) == pat.inv);
+            /* First nostalgic version
+               uint8_t inv = ~byte;
+               for (uint8_t i = 0b10000000u; i > 0; i >>= 1) {
+               if (((pat.pat & i) && !(byte & i)) || ((pat.inv & i) && !(inv & i)))
+               return false;
+               }
+               */
+        }
+};
 
 /**
  * Represents one node in compression tree, a letter or a fork
@@ -232,13 +308,15 @@ void TNode::printTree(ostream & out) const {
 class Tree {
     private:
         TNode * mRoot = nullptr;
+        ByteInStream & mIn;
+        UtfParser mParser;
+        bool mFailed = false;
 
         /**
          * Parses binary tree from input stream
-         * @param in stream to get bits from
          * @retrun dynamically allocated root item of a tree
          */
-        TNode * parseTree(ByteInStream & in);
+        TNode * parseTree();
         /**
          * Frees dynamically allocated tree from memory
          * @param root tree node to free them all
@@ -246,21 +324,25 @@ class Tree {
         void free(TNode * node);
 
     public:
-        Tree(ByteInStream & in): mRoot(parseTree(in)) {}
+        Tree(ByteInStream & in)
+            : mIn(in), mParser({in}) {
+                mRoot = parseTree();
+            }
         ~Tree() {
             free(mRoot);
             mRoot = nullptr;
         }
 
+        bool failed() const { return mFailed; }
         void printTree(ostream & out) const;
         /**
          * Reads bits from stream and finds corresponding char
          * @param in stream to read from
          * @param letter place to save output to
          */
-        void find(ByteInStream & in, UtfChar & letter) const;
+        void find(UtfChar & letter) const;
     private:
-        void find(const TNode * node, ByteInStream & in, UtfChar & letter) const;
+        void find(const TNode * node, UtfChar & letter) const;
 };
 
 void Tree::free(TNode * node) {
@@ -275,14 +357,21 @@ void Tree::free(TNode * node) {
     delete node;
 }
 
-TNode * Tree::parseTree(ByteInStream & in) {
-    bool isLetter = in.readBit();
+TNode * Tree::parseTree() {
+    if (mFailed) return nullptr;
+
+    bool isLetter = mIn.readBit();
     if (isLetter) {
         //cout << "parsing letter" << endl;
-        return new TNode(in.readByte());
+        UtfChar read;
+        if (! mParser.readUtfChar(read)) {
+            mFailed = true;
+            return nullptr;
+        }
+        return new TNode(read);
     } else {
         //cout << "parsing nodes" << endl;
-        return new TNode(parseTree(in), parseTree(in));
+        return new TNode(parseTree(), parseTree());
     }
 }
 
@@ -293,18 +382,18 @@ void Tree::printTree(ostream & out) const {
 }
 
 
-inline void Tree::find(ByteInStream & in, UtfChar & letter) const {
-    return find(mRoot, in, letter);
+inline void Tree::find(UtfChar & letter) const {
+    return find(mRoot, letter);
 }
 
-void Tree::find(const TNode * node, ByteInStream & in, UtfChar & letter) const {
+void Tree::find(const TNode * node, UtfChar & letter) const {
     if (node -> mIsLetter) {
         letter = node -> mLetter;
     } else {
-        if (in.readBit() == false)
-            return find(node -> mLeft, in, letter);
+        if (mIn.readBit() == false)
+            return find(node -> mLeft, letter);
         else
-            return find(node -> mRight, in, letter);
+            return find(node -> mRight, letter);
     }
 }
 
@@ -325,6 +414,12 @@ bool parseChunks(Tree & tree, ByteInStream & in, ostream & out);
  * @retrun next chunk size
  */
 uint16_t readChunkSize(ByteInStream & in);
+/**
+ * Writes a letter to a stream respecting it's UtfCharacter
+ * @param stream to write into
+ * @param letter utf char to write
+ */
+void writeUrfChar(ostream & out, const UtfChar & letter);
 
 
 const size_t chunkDefSize = 4096;
@@ -336,8 +431,8 @@ bool parseChunks(Tree & tree, ByteInStream & in, ostream & out) {
         // go trough chars
         for (size_t i = 0; i < size; i++) {
             UtfChar c;
-            tree.find(in, c);
-            out.put(c);
+            tree.find(c);
+            writeUrfChar(out, c);
             //cout << "Read char: " << c << " - " << (int)c << endl;
         }
         //latest chunk is always smaller
@@ -360,6 +455,15 @@ uint16_t readChunkSize(ByteInStream & in) {
     return val;
 }
 
+void writeUrfChar(ostream & out, const UtfChar & letter) {
+    uint64_t mask = 0b11111111u << 24;
+    for (; mask > 0; mask >>= 8) {
+        uint8_t byte = letter & mask;
+        // skip empty bytes except the last one (for '\0' character)
+        if (byte != 0 || mask == 0b11111111u)
+            out.put(byte);
+    }
+}
 
 
 /**
