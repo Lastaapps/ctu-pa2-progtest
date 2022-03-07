@@ -1,0 +1,14 @@
+Stávající opatření proti šíření pandemie stále nestačí, takže je potřeba opět přitvrdit. Jedním z kroků je reimplementace e-roušky. A protože osvědčení architekti státních informačních systémů jsou zaneprázdněni přípravami na převzetí zasloužených státních vyznamenání, budete tentokrát muset program nejen implementovat, ale i navrhovat si vhodné rozhraní.
+
+Vaším úkolem je realizovat 3 třídy. Jejich rozhraní budete muset navrhnout sami, navíc budete muset rozhraní přizpůsobit předpokládanému použití (viz přiložený archiv). Požadované třídy jsou:
+
+CTimeStamp, tato třída bude realizovat jednoduché zapouzdření časového razítka. Musí mít konstruktor, ve kterém bude inicializovat své složky (rok, měsíc, den, hodina, minuta, sekunda). Můžete se spolehnout, že jsou zadávané pouze platné hodnoty data a času.
+CContact je třída, která zapouzdřuje jeden kontakt mezi dvojicí uživatelů. Uživatelé jsou identifikováni svým telefonním číslem, okamžik kontaktu je zaznamenán v podobě časového razítka CTimeStamp.
+CEFaceMask je třída, která sdružuje zaznamenané kontakty. Kontakty se přidávají pomocí metody addContact, vyhledání kontaktů pak probíhá pomocí metody listContacts. Vyhledávací metodu lze zavolat s jedním parametrem (telefonním číslem nakaženého) nebo s trojicí parametrů (telefonním číslem nakaženého, počátek a konec časového intervalu). Metoda vrátí seznam čísel, se kterými byl dotazovaný v kontaktu (v druhém případě navíc ve vymezeném časovém intervalu).
+Pro potřeby této úlohy reprezentujte telefonní čísla jako celá čísla (v praxi by to nebyl dobrý nápad, počáteční nuly jsou u telefonních čísel podstatné). Návratové hodnoty metod listContacts vrátí seznam telefonních čísel infikovaných kontaktů. Zařídí, aby se ve výsledku čísla neopakovala, tedy ve výsledku potlačte druhý a další výskyt toho stejného čísla. Navíc je pro trasování důležité, aby telefonní čísla ve výsledku byla uložena v pořadí, ve kterém byla zadávaná (dříve zadané kontakty budou ve výsledku dříve). Konečně, z principu plnění databáze se občas stane, že se nedopatřením vygeneruje kontakt sám se sebou. Takový kontakt by trasovače zbytečně mátl, proto jej do výsledku nepřidávejte.
+
+Poznámky:
+
+V přiloženém archivu naleznete ukázkové běhy programu a testovací vstupy.
+Nemusíte se zabývat efektivitou řešení, postačuje rozumná implementace naivních algoritmů.
+Zaměřte se na čistý návrh tříd. Určitě nechcete udělat všechny členské proměnné s veřejným přístupem. Využijte cvičení ke konzultaci Vašeho návrhu.
