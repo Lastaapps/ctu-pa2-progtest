@@ -357,19 +357,21 @@ void TNode::printTree(ostream & out) const {
 }
 
 void Tree::free(TNode * node) {
-    if (!(node -> mIsLetter)) {
-        free(node -> mLeft);
-        free(node -> mRight);
-        node -> mLeft = nullptr;
-        node -> mRight = nullptr;
-    } else {
-        node -> mLetter = '\0';
+    if (node != nullptr) {
+        if (!(node -> mIsLetter)) {
+            free(node -> mLeft);
+            free(node -> mRight);
+            node -> mLeft = nullptr;
+            node -> mRight = nullptr;
+        } else {
+            node -> mLetter = '\0';
+        }
+        delete node;
     }
-    delete node;
 }
 
 TNode * Tree::parseTree() {
-    if (mFailed) return nullptr;
+    if (mFailed || !mIn.good()) return nullptr;
 
     bool isLetter = mIn.readBit();
     if (isLetter) {
@@ -546,7 +548,7 @@ bool decompressFile ( const char * inFileName, const char * outFileName ) {
     Tree tree(in);
     //tree.printTree(cout);
 
-    if (!parseChunks(tree, in, streams.getOut())) {
+    if (tree.failed() || !parseChunks(tree, in, streams.getOut())) {
         return false;
     }
 
@@ -611,6 +613,7 @@ int main ( void ) {
 
     testByteInStream();
     testByteOutStream();
+
 
     assert( identicalFiles( "tests/test0.orig", "tests/test0.orig"));
     assert(!identicalFiles( "tests/test0.orig", "tests/test1.orig"));
