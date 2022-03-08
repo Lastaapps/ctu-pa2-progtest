@@ -83,15 +83,15 @@ class ByteInStream {
         explicit ByteInStream(istream & in) : mIn(in) {};
 
         /**
-          * Reads the next bit from this stream
-          * @return true for 1 and false for 0 bit
-          */
+         * Reads the next bit from this stream
+         * @return true for 1 and false for 0 bit
+         */
         bool readBit();
 
         /**
-          * Reads the next byte from this stream
-          * @return byte of data
-          */
+         * Reads the next byte from this stream
+         * @return byte of data
+         */
         uint8_t readByte();
 
         // same as normal streams
@@ -125,27 +125,13 @@ class ByteOutStream {
          * writes single bit into a stream
          * @param bit bit to write, true for 1 and false for 0
          */
-        void putBit(bool bit) {
-
-            mByte = mByte << 1;
-            if (bit) mByte++;
-            // flushed whole byte into a stream
-            if (mOutByteIndex == 7) {
-                mOut.put(mByte);
-            }
-            //cout << "Putting " << val << " index " << (int)mOutByteIndex << endl;
-            mOutByteIndex &= ~-(++mOutByteIndex == 8);
-        };
+        void putBit(bool bit);
 
         /**
          * Writes entire byte into the stream
          * @param byte byte to write
          */
-        void putByte(uint8_t byte) {
-            for (uint8_t i = 0; i < 8; i++) {
-                putBit((byte & (1u << (7u - i))) > 0);
-            }
-        }
+        void putByte(uint8_t byte);
 
         // same as while using normal streams
         bool good() const {
@@ -161,10 +147,7 @@ class ByteOutStream {
         /**
          * Flushes the lates byte into a stream, fill the remaing bit with 0
          */
-        void close() {
-            // fill and flush lastest byte
-            while(mOutByteIndex != 0) putBit(false);
-        }
+        void close();
 };
 
 /**
@@ -192,11 +175,12 @@ class UtfParser {
         staticconst Pattern patThree = Pattern{0b11100000u, 0b00010000u};
         staticconst Pattern patFour  = Pattern{0b11110000u, 0b00001000u};
         staticconst Pattern patOther = Pattern{0b10000000u, 0b01000000u};
+        static const uint64_t maxUtfValue = 0b11110100100011111011111110111111;
 
-public:
+    public:
         bool readUtfChar(UtfChar & target) const;
 
-private:
+    private:
         bool readBytes(const uint8_t alreadyRead, const uint8_t bytesLeft, UtfChar & out) const;
 
         MatchResult matchByte(const uint8_t byte) const;
@@ -332,6 +316,32 @@ uint8_t ByteInStream::readByte() {
 }
 
 
+// -- ByteOutStream -----------------------------------------------------------
+void ByteOutStream::putBit(bool bit) {
+
+    mByte = mByte << 1;
+    if (bit) mByte++;
+    // flushed whole byte into a stream
+    if (mOutByteIndex == 7) {
+        mOut.put(mByte);
+    }
+    //cout << "Putting " << val << " index " << (int)mOutByteIndex << endl;
+    mOutByteIndex &= ~-(++mOutByteIndex == 8);
+}
+
+void ByteOutStream::putByte(uint8_t byte) {
+    for (uint8_t i = 0; i < 8; i++) {
+        putBit((byte & (1u << (7u - i))) > 0);
+    }
+}
+
+void ByteOutStream::close() {
+    // fill and flush lastest byte
+    while(mOutByteIndex != 0) putBit(false);
+}
+
+
+
 
 
 // --- Tree and TNode definitions ---------------------------------------------
@@ -363,15 +373,14 @@ TNode * Tree::parseTree() {
 
     bool isLetter = mIn.readBit();
     if (isLetter) {
-        //cout << "parsing letter" << endl;
         UtfChar read;
         if (! mParser.readUtfChar(read)) {
             mFailed = true;
             return nullptr;
         }
+        // writeUrfChar(cout, read);
         return new TNode(read);
     } else {
-        //cout << "parsing nodes" << endl;
         return new TNode(parseTree(), parseTree());
     }
 }
@@ -406,16 +415,21 @@ void Tree::find(const TNode * node, UtfChar & letter) const {
 bool UtfParser::readUtfChar(UtfChar & target) const {
     uint8_t byte = mIn.readByte();
     MR res = matchByte(byte);
+    // cout << "Byte read: " << byte << " (" << (uint64_t) byte << ")" << endl;
     switch (res) {
         case MR::ONE:
+            // cout << "Res: 1" << endl;
             target = byte;
             return true;
         case MR::TWO:
+            // cout << "Res: 2" << endl;
             return readBytes(byte, 1, target);
         case MR::THREE:
+            // cout << "Res: 3" << endl;
             return readBytes(byte, 2, target);
         case MR::FOUR:
-            return readBytes(byte, 3, target);
+            // cout << "Res: 4" << endl;
+            return readBytes(byte, 3, target) && target <= UtfParser::maxUtfValue;
         default:
             return false;
     }
@@ -426,6 +440,7 @@ bool UtfParser::readBytes(const uint8_t alreadyRead, const uint8_t bytesLeft, Ut
     out = alreadyRead;
     for (uint8_t i = 0; i < bytesLeft; i++) {
         uint8_t byte = mIn.readByte();
+        // cout << "Byte other: " << byte << " (" << (uint64_t) byte << ")" << endl;
         if (!match(byte, patOther))
             return false;
         out <<= 8;
@@ -495,12 +510,17 @@ uint16_t readChunkSize(ByteInStream & in) {
 }
 
 void writeUrfChar(ostream & out, const UtfChar & letter) {
+    //cout << "Letter: " << letter << endl;
     uint64_t mask = 0b11111111u << 24;
-    for (; mask > 0; mask >>= 8) {
-        uint8_t byte = letter & mask;
+    for (uint8_t i = 0; i < 4; i++, mask >>= 8) {
+        uint8_t byte = (letter & mask) >> ((3 - i) * 8);
+        //cout << "Mask: " << mask << endl;
+        //cout << "Byte: " << (uint16_t) byte << endl;
         // skip empty bytes except the last one (for '\0' character)
-        if (byte != 0 || mask == 0b11111111u)
+        if (byte != 0 || mask == 0b11111111u) {
+            //cout << "Putting " << (uint16_t) byte << endl;
             out.put(byte);
+        }
     }
 }
 
@@ -612,7 +632,7 @@ int main ( void ) {
 
     assert(!decompressFile( "tests/test5.huf",  "tempfile" ));
 
-    return 0;
+
 
     assert( decompressFile( "tests/extra0.huf",  "tempfile" ));
     assert( identicalFiles( "tests/extra0.orig", "tempfile" ));
