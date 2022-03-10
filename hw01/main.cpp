@@ -38,6 +38,77 @@ bool compressFile ( const char * inFileName, const char * outFileName );
 
 #endif /* __PROGTEST__ */
 
+
+class HOut {
+    protected:
+        HOut() {}
+    public:
+        virtual void put(uint8_t) {}
+        virtual bool good() const { return false; }
+        virtual bool eof()  const { return true; }
+        virtual bool fail() const { return true; }
+        virtual void close() {}
+};
+
+class HOutStd : public HOut {
+    private:
+        ostream & mOut;
+    public:
+        explicit HOutStd(ostream & out) : mOut(out) {}
+        virtual void put(uint8_t byte) { mOut.put(byte); }
+        virtual bool good() const { return mOut.good(); }
+        virtual bool eof()  const { return mOut.eof(); }
+        virtual bool fail() const { return mOut.fail(); }
+        virtual void close() {}
+};
+
+class HOutFile : public HOut {
+    private:
+        ofstream & mOut;
+    public:
+        explicit HOutFile(ofstream & out) : mOut(out) {}
+        virtual void put(uint8_t byte) { mOut.put(byte); }
+        virtual bool good() const { return mOut.good(); }
+        virtual bool eof()  const { return mOut.eof(); }
+        virtual bool fail() const { return mOut.fail(); }
+        virtual void close() { mOut.close(); }
+};
+
+class HIn {
+    public:
+        virtual uint8_t get() { return 0; }
+        virtual bool good() const { return false; };
+        virtual bool eof() const { return false; };
+        virtual bool fail() const { return true; };
+        virtual void close() {}
+};
+
+class HInStd : public HIn {
+    private:
+        istream & mIn;
+    public:
+        explicit HInStd(istream & in) : mIn(in) {}
+        uint8_t get() override { return mIn.get(); }
+        bool good() const override { return mIn.good(); }
+        bool eof()  const override { return mIn.eof(); }
+        bool fail() const override { return mIn.fail(); }
+        void close() override {}
+};
+
+class HInFile : public HIn {
+    private:
+        ifstream & mIn;
+    public:
+        explicit HInFile(ifstream & in) : mIn(in) {}
+        uint8_t peek() { return mIn.peek(); }
+        uint8_t get() override { return mIn.get(); }
+        bool good() const override { return mIn.good(); }
+        bool eof()  const override { return mIn.eof(); }
+        bool fail() const override { return mIn.fail(); }
+        void close() { mIn.close(); }
+};
+
+
 /**
  * Stores in and out file streams
  */
@@ -75,7 +146,7 @@ class FileStreams {
 /**
  * Conterts normal istream reading byte info one reading bits
  */
-class ByteInStream {
+class BitInStream : public HIn {
     private:
         // stream from with are we reading
         istream & mIn;
@@ -88,36 +159,31 @@ class ByteInStream {
         /**
          * @param in stream to read bits from
          */
-        explicit ByteInStream(istream & in) : mIn(in) {};
+        explicit BitInStream(istream & in) : mIn(in) {};
 
         /**
          * Reads the next bit from this stream
          * @return true for 1 and false for 0 bit
          */
-        bool readBit();
+         bool readBit();
 
         /**
          * Reads the next byte from this stream
          * @return byte of data
          */
-        uint8_t readByte();
+        uint8_t get();
 
         // same as normal streams
-        bool good() const {
-            return mInByteIndex != 1 || mIn.good();
-        }
-        bool eof() const {
-            return mInByteIndex == 1 && mIn.eof();
-        }
-        bool fail() const {
-            return !(good() || eof());
-        }
+        bool good() const override { return mInByteIndex != 1 || mIn.good(); }
+        bool eof()  const override { return mInByteIndex == 1 && mIn.eof(); }
+        bool fail() const override { return !(good() || eof()); }
+        void close() {}
 };
 
 /**
  * Writes single bits to a stream
  */
-class ByteOutStream {
+class BitOutStream : public HOut {
     private:
         // stream to write bits to
         ostream & mOut;
@@ -127,39 +193,36 @@ class ByteOutStream {
         uint8_t mByte = 0;
 
     public:
-        explicit ByteOutStream(ostream & out) : mOut(out) {};
-        ~ByteOutStream() {
-            close();
-        }
+        explicit BitOutStream(ostream & out) : mOut(out) {};
+        virtual ~BitOutStream() { close(); }
 
         /**
          * writes single bit into a stream
          * @param bit bit to write, true for 1 and false for 0
          */
-        void putBit(bool bit);
+        virtual void putBit(bool bit);
 
         /**
          * Writes entire byte into the stream
          * @param byte byte to write
          */
-        void putByte(uint8_t byte);
+        virtual void put(uint8_t byte);
 
         // same as while using normal streams
-        bool good() const {
-            return mOut.good();
-        }
-        bool eof() const {
-            return mOut.eof();
-        }
-        bool fail() const {
-            return mOut.fail() || mOut.bad();
-        }
+        virtual bool good() const { return mOut.good(); }
+        virtual bool eof() const { return mOut.eof(); }
+        virtual bool fail() const { return mOut.fail() || mOut.bad(); }
 
         /**
          * Flushes the lates byte into a stream, fill the remaing bit with 0
          */
-        void close();
+        virtual void close();
 };
+
+
+
+
+
 
 /**
  * Represents up to 4 bytes of an utf character
@@ -168,9 +231,9 @@ typedef uint64_t UtfChar;
 
 class UtfParser {
     private:
-        ByteInStream & mIn;
+        HIn & mIn;
     public:
-        explicit UtfParser(ByteInStream & in): mIn(in) {}
+        explicit UtfParser(HIn & in): mIn(in) {}
 
     private:
 
@@ -192,7 +255,7 @@ class UtfParser {
         bool readUtfChar(UtfChar & target) const;
 
     private:
-        bool readBytes(const uint8_t alreadyRead, const uint8_t bytesLeft, UtfChar & out) const;
+        bool gets(const uint8_t alreadyRead, const uint8_t bytesLeft, UtfChar & out) const;
 
         MatchResult matchByte(const uint8_t byte) const;
 
@@ -217,12 +280,12 @@ class TNode {
             : mIsLetter(false),  mLetter('\0'),
             mLeft(left), mRight(right), mOccurance(occurance) {}
 
-        void printTree(ostream & out) const;
+        void printTree(HOut & out) const;
         friend class Tree;
 
-    bool operator < (TNode & other) {
-        return mOccurance < other.mOccurance;
-    }
+        bool operator < (TNode & other) {
+            return mOccurance < other.mOccurance;
+        }
 };
 
 
@@ -239,8 +302,8 @@ class Tree {
          * Parses binary tree from input stream
          * @retrun dynamically allocated root item of a tree
          */
-        TNode * parseTree(ByteInStream & in, UtfParser & parser);
-        TNode * createFromMap(const map<UtfChar, size_t> & map);
+        TNode * parseTree(BitInStream & in, UtfParser & parser);
+        TNode * createFromMap(const unordered_map<UtfChar, size_t> & map);
         /**
          * Frees dynamically allocated tree from memory
          * @param root tree node to free them all
@@ -248,11 +311,11 @@ class Tree {
         void free(TNode * node);
 
     public:
-        Tree(ByteInStream & in) {
+        Tree(BitInStream & in) {
             UtfParser mParser(in);
             mRoot = parseTree(in, mParser);
         }
-        Tree(const map<UtfChar, size_t> & map) {
+        Tree(const unordered_map<UtfChar, size_t> & map) {
             mRoot = createFromMap(map);
         }
         ~Tree() {
@@ -261,20 +324,20 @@ class Tree {
         }
 
         bool failed() const { return mFailed; }
-        void printTree(ostream & out) const;
+        void printTree(HOut & out) const;
 
-        void find(ByteInStream & in, UtfChar & letter) const;
+        void find(BitInStream & in, UtfChar & letter) const;
         void findChar(vector<bool> & position, const UtfChar & letter) const;
-        void writeTree(ByteOutStream & out) const;
+        void writeTree(BitOutStream & out) const;
         /**
          * Reads bits from stream and finds corresponding char
          * @param in stream to read from
          * @param letter place to save output to
          */
     private:
-        void find(ByteInStream & in, const TNode * node, UtfChar & letter) const;
+        void find(BitInStream & in, const TNode * node, UtfChar & letter) const;
         bool findChar(vector<bool> & position, const TNode * node, const UtfChar & letter) const;
-        void writeTree(ByteOutStream & out, const TNode * node) const;
+        void writeTree(BitOutStream & out, const TNode * node) const;
 };
 
 
@@ -287,19 +350,19 @@ class Tree {
  * @param out stream to write letter to
  * @retrun true if all the operations succeded
  */
-bool parseChunks(Tree & tree, ByteInStream & in, ostream & out);
+bool parseChunks(Tree & tree, BitInStream & in, ostream & out);
 /**
  * Decides how long is the next chunk going to be
  * @param in stream to read bits from
  * @retrun next chunk size
  */
-uint16_t readChunkSize(ByteInStream & in);
+uint16_t readChunkSize(BitInStream & in);
 /**
  * Writes a letter to a stream respecting it's UtfCharacter
  * @param stream to write into
  * @param letter utf char to write
  */
-void writeUrfChar(ByteOutStream & out, const UtfChar & letter);
+void writeUtfChar(HOut & out, const UtfChar & letter);
 /**
  * Checks if all the operations completed as expected
  * Checks if there are no more bytes in input stream
@@ -313,8 +376,8 @@ bool isReadCompletelly(FileStreams & streams);
 
 // --- Functions definitions --------------------------------------------------
 
-// --- ByteInStream -----------------------------------------------------------
-bool ByteInStream::readBit() {
+// --- BitInStream -----------------------------------------------------------
+bool BitInStream::readBit() {
     if (!good()) return false;
 
     // get new byte from stream
@@ -328,7 +391,7 @@ bool ByteInStream::readBit() {
     return val;
 }
 
-uint8_t ByteInStream::readByte() {
+uint8_t BitInStream::get() {
     uint8_t val = 0;
     for (uint8_t i = 0; i < 8; i++) {
         const bool isTrue = readBit();
@@ -340,8 +403,8 @@ uint8_t ByteInStream::readByte() {
 }
 
 
-// -- ByteOutStream -----------------------------------------------------------
-void ByteOutStream::putBit(bool bit) {
+// -- BitOutStream -----------------------------------------------------------
+void BitOutStream::putBit(bool bit) {
 
     mByte = mByte << 1;
     if (bit) mByte++;
@@ -353,13 +416,13 @@ void ByteOutStream::putBit(bool bit) {
     mOutByteIndex &= ~-(++mOutByteIndex == 8);
 }
 
-void ByteOutStream::putByte(uint8_t byte) {
+void BitOutStream::put(uint8_t byte) {
     for (uint8_t i = 0; i < 8; i++) {
         putBit((byte & (1u << (7u - i))) > 0);
     }
 }
 
-void ByteOutStream::close() {
+void BitOutStream::close() {
     // fill and flush lastest byte
     while(mOutByteIndex != 0) putBit(false);
 }
@@ -369,11 +432,10 @@ void ByteOutStream::close() {
 
 
 // --- Tree and TNode definitions ---------------------------------------------
-void TNode::printTree(ostream & out) const {
+void TNode::printTree(HOut & out) const {
     if (mIsLetter) {
-        ByteOutStream bOut(out);
-        writeUrfChar(bOut, mLetter);
-         out << " (" << (int) mLetter << ")" << endl;
+        writeUtfChar(out, mLetter);
+        //out << " (" << (int) mLetter << ")" << endl;
     }
     else {
         mLeft -> printTree(out);
@@ -395,7 +457,7 @@ void Tree::free(TNode * node) {
     }
 }
 
-TNode * Tree::parseTree(ByteInStream & in, UtfParser & parser) {
+TNode * Tree::parseTree(BitInStream & in, UtfParser & parser) {
     if (mFailed || !in.good()) return nullptr;
 
     bool isLetter = in.readBit();
@@ -411,17 +473,17 @@ TNode * Tree::parseTree(ByteInStream & in, UtfParser & parser) {
     }
 }
 
-void Tree::printTree(ostream & out) const {
+void Tree::printTree(HOut & out) const {
     cout << "Printing tree" << endl;
     mRoot -> printTree(out);
     cout << "Printing tree done" << endl;
 }
 
-inline void Tree::find(ByteInStream & in, UtfChar & letter) const {
+inline void Tree::find(BitInStream & in, UtfChar & letter) const {
     return find(in, mRoot, letter);
 }
 
-void Tree::find(ByteInStream & in, const TNode * node, UtfChar & letter) const {
+void Tree::find(BitInStream & in, const TNode * node, UtfChar & letter) const {
     if (node -> mIsLetter) {
         letter = node -> mLetter;
     } else {
@@ -432,14 +494,14 @@ void Tree::find(ByteInStream & in, const TNode * node, UtfChar & letter) const {
     }
 }
 
-TNode * Tree::createFromMap(const map<UtfChar, size_t> & map) {
+TNode * Tree::createFromMap(const unordered_map<UtfChar, size_t> & map) {
     priority_queue<TNode*, vector<TNode*>, greater<TNode*>> queue;
     for (const auto & [letter, occurance] : map) {
         TNode * node = new TNode(letter, occurance);
         queue.push(node);
-        // ByteOutStream bCout = ByteOutStream(cout);
+        // BitOutStream bCout = BitOutStream(cout);
         // cout << "Inserting ";
-        // writeUrfChar(bCout, letter);
+        // writeUtfChar(bCout, letter);
         // cout << " (" << occurance << ")" << endl;
     }
 
@@ -452,19 +514,19 @@ TNode * Tree::createFromMap(const map<UtfChar, size_t> & map) {
         TNode * second = queue.top();
         queue.pop();
         // cout << "poped "
-            // << first -> mOccurance << " and "
-            // << second -> mOccurance << endl;
+        // << first -> mOccurance << " and "
+        // << second -> mOccurance << endl;
         TNode * parent = new TNode(first, second, first -> mOccurance + second -> mOccurance);
         queue.push(parent);
     }
 }
 
-void Tree::writeTree(ByteOutStream & out) const { return writeTree(out, mRoot); }
+void Tree::writeTree(BitOutStream & out) const { return writeTree(out, mRoot); }
 
-void Tree::writeTree(ByteOutStream & out, const TNode * node) const {
+void Tree::writeTree(BitOutStream & out, const TNode * node) const {
     if (node -> mIsLetter) {
         out.putBit(true);
-        writeUrfChar(out, node -> mLetter);
+        writeUtfChar(out, node -> mLetter);
     } else {
         out.putBit(false);
         writeTree(out, node -> mLeft);
@@ -495,7 +557,7 @@ bool Tree::findChar(vector<bool> & position, const TNode * node, const UtfChar &
 // --- UtfParser definitions --------------------------------------------------
 #define MR UtfParser::MatchResult
 bool UtfParser::readUtfChar(UtfChar & target) const {
-    uint8_t byte = mIn.readByte();
+    uint8_t byte = mIn.get();
     MR res = matchByte(byte);
     // cout << "Byte read: " << byte << " (" << (uint64_t) byte << ")" << endl;
     switch (res) {
@@ -505,23 +567,23 @@ bool UtfParser::readUtfChar(UtfChar & target) const {
             return true;
         case MR::TWO:
             // cout << "Res: 2" << endl;
-            return readBytes(byte, 1, target);
+            return gets(byte, 1, target);
         case MR::THREE:
             // cout << "Res: 3" << endl;
-            return readBytes(byte, 2, target);
+            return gets(byte, 2, target);
         case MR::FOUR:
             // cout << "Res: 4" << endl;
-            return readBytes(byte, 3, target) && target <= UtfParser::maxUtfValue;
+            return gets(byte, 3, target) && target <= UtfParser::maxUtfValue;
         default:
             return false;
     }
     return false;
 }
 
-bool UtfParser::readBytes(const uint8_t alreadyRead, const uint8_t bytesLeft, UtfChar & out) const {
+bool UtfParser::gets(const uint8_t alreadyRead, const uint8_t bytesLeft, UtfChar & out) const {
     out = alreadyRead;
     for (uint8_t i = 0; i < bytesLeft; i++) {
-        uint8_t byte = mIn.readByte();
+        uint8_t byte = mIn.get();
         // cout << "Byte other: " << byte << " (" << (uint64_t) byte << ")" << endl;
         if (!match(byte, patOther))
             return false;
@@ -559,7 +621,7 @@ bool UtfParser::match(const uint8_t byte, const Pattern pat) const {
 
 // --- Chunk management and output --------------------------------------------
 const size_t chunkDefSize = 4096;
-bool parseChunks(Tree & tree, ByteInStream & in, ByteOutStream & out) {
+bool parseChunks(Tree & tree, BitInStream & in, BitOutStream & out) {
     while(in.good() && out.good()) {
         size_t size = readChunkSize(in);
         //cout << "Chunksize: " << size << endl;
@@ -568,7 +630,7 @@ bool parseChunks(Tree & tree, ByteInStream & in, ByteOutStream & out) {
         for (size_t i = 0; i < size; i++) {
             UtfChar c;
             tree.find(in, c);
-            writeUrfChar(out, c);
+            writeUtfChar(out, c);
             //cout << "Read char: " << c << " - " << (int)c << endl;
         }
         //latest chunk is always smaller
@@ -578,7 +640,7 @@ bool parseChunks(Tree & tree, ByteInStream & in, ByteOutStream & out) {
     return false;
 }
 
-uint16_t readChunkSize(ByteInStream & in) {
+uint16_t readChunkSize(BitInStream & in) {
     bool isDefault = in.readBit();
     if (isDefault) return chunkDefSize;
 
@@ -591,7 +653,7 @@ uint16_t readChunkSize(ByteInStream & in) {
     return val;
 }
 
-void writeUrfChar(ByteOutStream & out, const UtfChar & letter) {
+void writeUtfChar(HOut & out, const UtfChar & letter) {
     //cout << "Letter: " << letter << endl;
     uint64_t mask = 0b11111111u << 24;
     for (uint8_t i = 0; i < 4; i++, mask >>= 8) {
@@ -601,7 +663,7 @@ void writeUrfChar(ByteOutStream & out, const UtfChar & letter) {
         // skip empty bytes except the last one (for '\0' character)
         if (byte != 0 || mask == 0b11111111u) {
             //cout << "Putting " << (uint16_t) byte << endl;
-            out.putByte(byte);
+            out.put(byte);
         }
     }
 }
@@ -622,8 +684,8 @@ bool isReadCompletelly(FileStreams & streams) {
 bool decompressFile ( const char * inFileName, const char * outFileName ) {
     FileStreams streams(inFileName, outFileName);
     if (!streams.good()) { return false; }
-    ByteInStream in(streams.getIn());
-    ByteOutStream out(streams.getOut());
+    BitInStream in(streams.getIn());
+    BitOutStream out(streams.getOut());
 
     Tree tree(in);
     //tree.printTree(cout);
@@ -640,12 +702,11 @@ bool decompressFile ( const char * inFileName, const char * outFileName ) {
 }
 
 
-bool readToMap(istream & in, map<UtfChar, size_t> & map) {
-    ByteInStream bIn(in);
-    UtfParser parser(bIn);
+bool readToMap(HInFile & in, unordered_map<UtfChar, size_t> & map) {
+    UtfParser parser(in);
     UtfChar letter;
-    while (in) {
-        in.peek(); // check if the last byte was reached
+    while (in.good()) {
+        in.peek();
         if (in.eof()) return true;
         if (!parser.readUtfChar(letter) || !in.good()) return false;
 
@@ -656,8 +717,8 @@ bool readToMap(istream & in, map<UtfChar, size_t> & map) {
     return false;
 }
 
-uint16_t readChunk(ByteInStream & in, UtfChar * chunk) {
-    UtfParser parser(in);
+uint16_t readChunk(HIn & in, UtfParser & parser, UtfChar * chunk) {
+
     UtfChar letter;
     uint16_t i = 0;
     for (; i < chunkDefSize && in.good(); i++) {
@@ -668,14 +729,14 @@ uint16_t readChunk(ByteInStream & in, UtfChar * chunk) {
     return in.good() ? i : i - 1;
 }
 
-void write12bitNumber(ByteOutStream & out, const uint16_t num) {
+void write12bitNumber(BitOutStream & out, const uint16_t num) {
     for (uint16_t mask = 1u << 11; mask > 0; mask >>= 1) {
         out.putBit((num & mask) > 0);
     }
 }
 
-void writeCharacters(ByteOutStream & out, const Tree & tree, const UtfChar * chunk, const uint16_t size) {
-    vector<bool> position;
+void writeCharacters(BitOutStream & out, const Tree & tree,
+        const UtfChar * chunk, const uint16_t size, vector<bool> & position) {
     for (uint16_t i = 0; i < size; i++) {
         tree.findChar(position, chunk[i]);
         // cout << "Writing char " << (char) chunk[i] << " - ";
@@ -687,12 +748,14 @@ void writeCharacters(ByteOutStream & out, const Tree & tree, const UtfChar * chu
     }
 }
 
-bool writeToFile(ByteInStream & in, ByteOutStream & out, const Tree & tree) {
+bool writeToFile(HIn & in, BitOutStream & out, const Tree & tree) {
     UtfChar chunk[chunkDefSize];
+    UtfParser parser(in);
+    vector<bool> position;
     uint16_t chunkSize;
     do {
         if (!in.good()) return false;
-        chunkSize = readChunk(in, chunk);
+        chunkSize = readChunk(in, parser, chunk);
         // cout << "Writing chunk " << chunkSize << " chars long" << endl;
         if (chunkSize == chunkDefSize) {
             out.putBit(true);
@@ -700,7 +763,7 @@ bool writeToFile(ByteInStream & in, ByteOutStream & out, const Tree & tree) {
             out.putBit(false);
             write12bitNumber(out, chunkSize);
         }
-        writeCharacters(out, tree, chunk, chunkSize);
+        writeCharacters(out, tree, chunk, chunkSize, position);
     } while(chunkSize == chunkDefSize);
     return true;
 }
@@ -714,18 +777,19 @@ bool compressFile ( const char * inFileName, const char * outFileName ) {
     streams.getIn().peek(); // to check empty file, eof() will be true
     if (!streams.good()) { return false; }
 
-    map<UtfChar, size_t> map; // of letter occurance
-    if (!readToMap(streams.getIn(), map)) return false;
+    unordered_map<UtfChar, size_t> map; // of letter occurance
+    HInFile fIn(streams.getIn());
+    if (!readToMap(fIn, map)) return false;
 
     streams.getIn().seekg(0);
-    ByteInStream in(streams.getIn());
-    ByteOutStream out(streams.getOut());
+    //BitInStream in(streams.getIn());
+    BitOutStream out(streams.getOut());
 
     Tree tree(map);
     // tree.printTree(cout);
     tree.writeTree(out);
 
-    if (!writeToFile(in, out, tree)) return false;
+    if (!writeToFile(fIn, out, tree)) return false;
     if (!isSuccessfullyCompressed(streams)) return false;
 
     return true;
@@ -746,14 +810,14 @@ bool identicalFiles ( const char * fileName1, const char * fileName2 ) {
     }
 }
 
-void testByteInStream() {
+void testBitInStream() {
 
     istringstream sStream("abc");
-    ByteInStream bStream(sStream);
+    BitInStream bStream(sStream);
 
-    assert (bStream.readByte() == 'a');
-    assert (bStream.readByte() == 'b');
-    assert (bStream.readByte() == 'c');
+    assert (bStream.get() == 'a');
+    assert (bStream.get() == 'b');
+    assert (bStream.get() == 'c');
     assert ( bStream.good());
     assert (!bStream.eof());
     assert (!bStream.fail());
@@ -763,12 +827,12 @@ void testByteInStream() {
     assert (!bStream.fail());
 }
 
-void testByteOutStream() {
+void testBitOutStream() {
     stringstream sOut;
-    ByteOutStream bOut(sOut);
-    bOut.putByte('a');
-    bOut.putByte('b');
-    bOut.putByte('c');
+    BitOutStream bOut(sOut);
+    bOut.put('a');
+    bOut.put('b');
+    bOut.put('c');
     assert( bOut.good());
     assert(!bOut.fail());
     assert(sOut.str() == "abc");
@@ -776,8 +840,8 @@ void testByteOutStream() {
 
 int main ( void ) {
 
-    testByteInStream();
-    testByteOutStream();
+    testBitInStream();
+    testBitOutStream();
 
 
     // Decompression tests
@@ -832,6 +896,8 @@ int main ( void ) {
 
     assert( decompressFile( "tests/extra9.huf",  "tempfile" ));
     assert( identicalFiles( "tests/extra9.orig", "tempfile" ));
+
+
 
     // Compression tests
     assert(!compressFile( "/dev/null", "tempcomp" ));
