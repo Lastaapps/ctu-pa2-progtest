@@ -25,4 +25,5 @@ clean:
 	$(RM) $(TARGET)
 	$(RM) $(TARGET).o
 	$(RM) tempfile
+	$(RM) tempcomp
 

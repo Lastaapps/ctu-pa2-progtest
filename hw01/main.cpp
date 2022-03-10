@@ -28,6 +28,13 @@ using namespace std;
  * @return if decopression succeded
  */
 bool decompressFile ( const char * inFileName, const char * outFileName );
+/**
+ * Compresses file using Huffman compression
+ * @param inFileName input file
+ * @param outFileName file to write in
+ * @return if compression succeded
+ */
+bool compressFile ( const char * inFileName, const char * outFileName );
 
 #endif /* __PROGTEST__ */
 
@@ -45,6 +52,7 @@ class FileStreams {
             mOut(ofstream(outFileName, ios::binary)) {}
         // closes sreams when they are no longer needed
         ~FileStreams() {
+            mOut.flush();
             mIn.close();
             mOut.close();
         }
@@ -120,6 +128,9 @@ class ByteOutStream {
 
     public:
         explicit ByteOutStream(ostream & out) : mOut(out) {};
+        ~ByteOutStream() {
+            close();
+        }
 
         /**
          * writes single bit into a stream
@@ -196,16 +207,22 @@ class TNode {
         bool mIsLetter;
         UtfChar mLetter;
         TNode * mLeft, * mRight;
+        size_t mOccurance;
     public:
-        explicit TNode(UtfChar c)
+        explicit TNode(UtfChar c, size_t occurance = 0)
             : mIsLetter(true), mLetter(c),
-            mLeft(nullptr), mRight(nullptr) {};
-        explicit TNode(TNode * left, TNode * right)
+            mLeft(nullptr), mRight(nullptr), mOccurance(occurance) {}
+
+        explicit TNode(TNode * left, TNode * right, size_t occurance = 0)
             : mIsLetter(false),  mLetter('\0'),
-            mLeft(left), mRight(right) {};
+            mLeft(left), mRight(right), mOccurance(occurance) {}
 
         void printTree(ostream & out) const;
         friend class Tree;
+
+    bool operator < (TNode & other) {
+        return mOccurance < other.mOccurance;
+    }
 };
 
 
@@ -216,15 +233,14 @@ class TNode {
 class Tree {
     private:
         TNode * mRoot = nullptr;
-        ByteInStream & mIn;
-        UtfParser mParser;
         bool mFailed = false;
 
         /**
          * Parses binary tree from input stream
          * @retrun dynamically allocated root item of a tree
          */
-        TNode * parseTree();
+        TNode * parseTree(ByteInStream & in, UtfParser & parser);
+        TNode * createFromMap(const map<UtfChar, size_t> & map);
         /**
          * Frees dynamically allocated tree from memory
          * @param root tree node to free them all
@@ -232,10 +248,13 @@ class Tree {
         void free(TNode * node);
 
     public:
-        Tree(ByteInStream & in)
-            : mIn(in), mParser({in}) {
-                mRoot = parseTree();
-            }
+        Tree(ByteInStream & in) {
+            UtfParser mParser(in);
+            mRoot = parseTree(in, mParser);
+        }
+        Tree(const map<UtfChar, size_t> & map) {
+            mRoot = createFromMap(map);
+        }
         ~Tree() {
             free(mRoot);
             mRoot = nullptr;
@@ -243,14 +262,19 @@ class Tree {
 
         bool failed() const { return mFailed; }
         void printTree(ostream & out) const;
+
+        void find(ByteInStream & in, UtfChar & letter) const;
+        void findChar(vector<bool> & position, const UtfChar & letter) const;
+        void writeTree(ByteOutStream & out) const;
         /**
          * Reads bits from stream and finds corresponding char
          * @param in stream to read from
          * @param letter place to save output to
          */
-        void find(UtfChar & letter) const;
     private:
-        void find(const TNode * node, UtfChar & letter) const;
+        void find(ByteInStream & in, const TNode * node, UtfChar & letter) const;
+        bool findChar(vector<bool> & position, const TNode * node, const UtfChar & letter) const;
+        void writeTree(ByteOutStream & out, const TNode * node) const;
 };
 
 
@@ -275,7 +299,7 @@ uint16_t readChunkSize(ByteInStream & in);
  * @param stream to write into
  * @param letter utf char to write
  */
-void writeUrfChar(ostream & out, const UtfChar & letter);
+void writeUrfChar(ByteOutStream & out, const UtfChar & letter);
 /**
  * Checks if all the operations completed as expected
  * Checks if there are no more bytes in input stream
@@ -347,8 +371,9 @@ void ByteOutStream::close() {
 // --- Tree and TNode definitions ---------------------------------------------
 void TNode::printTree(ostream & out) const {
     if (mIsLetter) {
-        writeUrfChar(out, mLetter);
-        out << " (" << (int) mLetter << ")" << endl;
+        ByteOutStream bOut(out);
+        writeUrfChar(bOut, mLetter);
+         out << " (" << (int) mLetter << ")" << endl;
     }
     else {
         mLeft -> printTree(out);
@@ -370,20 +395,19 @@ void Tree::free(TNode * node) {
     }
 }
 
-TNode * Tree::parseTree() {
-    if (mFailed || !mIn.good()) return nullptr;
+TNode * Tree::parseTree(ByteInStream & in, UtfParser & parser) {
+    if (mFailed || !in.good()) return nullptr;
 
-    bool isLetter = mIn.readBit();
+    bool isLetter = in.readBit();
     if (isLetter) {
         UtfChar read;
-        if (! mParser.readUtfChar(read)) {
+        if (! parser.readUtfChar(read)) {
             mFailed = true;
             return nullptr;
         }
-        // writeUrfChar(cout, read);
         return new TNode(read);
     } else {
-        return new TNode(parseTree(), parseTree());
+        return new TNode(parseTree(in, parser), parseTree(in, parser));
     }
 }
 
@@ -393,27 +417,83 @@ void Tree::printTree(ostream & out) const {
     cout << "Printing tree done" << endl;
 }
 
-inline void Tree::find(UtfChar & letter) const {
-    return find(mRoot, letter);
+inline void Tree::find(ByteInStream & in, UtfChar & letter) const {
+    return find(in, mRoot, letter);
 }
 
-void Tree::find(const TNode * node, UtfChar & letter) const {
+void Tree::find(ByteInStream & in, const TNode * node, UtfChar & letter) const {
     if (node -> mIsLetter) {
         letter = node -> mLetter;
     } else {
-        if (mIn.readBit() == false)
-            return find(node -> mLeft, letter);
+        if (in.readBit() == false)
+            return find(in, node -> mLeft, letter);
         else
-            return find(node -> mRight, letter);
+            return find(in, node -> mRight, letter);
+    }
+}
+
+TNode * Tree::createFromMap(const map<UtfChar, size_t> & map) {
+    priority_queue<TNode*, vector<TNode*>, greater<TNode*>> queue;
+    for (const auto & [letter, occurance] : map) {
+        TNode * node = new TNode(letter, occurance);
+        queue.push(node);
+        // ByteOutStream bCout = ByteOutStream(cout);
+        // cout << "Inserting ";
+        // writeUrfChar(bCout, letter);
+        // cout << " (" << occurance << ")" << endl;
+    }
+
+    while(true) {
+        TNode * first = queue.top();
+        queue.pop();
+        if (queue.empty()) {
+            return first; // top found
+        }
+        TNode * second = queue.top();
+        queue.pop();
+        // cout << "poped "
+            // << first -> mOccurance << " and "
+            // << second -> mOccurance << endl;
+        TNode * parent = new TNode(first, second, first -> mOccurance + second -> mOccurance);
+        queue.push(parent);
+    }
+}
+
+void Tree::writeTree(ByteOutStream & out) const { return writeTree(out, mRoot); }
+
+void Tree::writeTree(ByteOutStream & out, const TNode * node) const {
+    if (node -> mIsLetter) {
+        out.putBit(true);
+        writeUrfChar(out, node -> mLetter);
+    } else {
+        out.putBit(false);
+        writeTree(out, node -> mLeft);
+        writeTree(out, node -> mRight);
+    }
+}
+
+void Tree::findChar(vector<bool> & position, const UtfChar & letter) const {
+    position.clear();
+    findChar(position, mRoot, letter);
+}
+
+bool Tree::findChar(vector<bool> & position, const TNode * node, const UtfChar & letter) const {
+    if (node -> mIsLetter) {
+        return node -> mLetter == letter;
+    } else {
+        position.push_back(false);
+        if (findChar(position, node -> mLeft, letter)) return true;
+        position.back() = true;
+        if (findChar(position, node -> mRight, letter)) return true;
+        position.pop_back();
+        return false;
     }
 }
 
 
 
-
-
 // --- UtfParser definitions --------------------------------------------------
-#define MR UtfParser::MatchResult 
+#define MR UtfParser::MatchResult
 bool UtfParser::readUtfChar(UtfChar & target) const {
     uint8_t byte = mIn.readByte();
     MR res = matchByte(byte);
@@ -479,7 +559,7 @@ bool UtfParser::match(const uint8_t byte, const Pattern pat) const {
 
 // --- Chunk management and output --------------------------------------------
 const size_t chunkDefSize = 4096;
-bool parseChunks(Tree & tree, ByteInStream & in, ostream & out) {
+bool parseChunks(Tree & tree, ByteInStream & in, ByteOutStream & out) {
     while(in.good() && out.good()) {
         size_t size = readChunkSize(in);
         //cout << "Chunksize: " << size << endl;
@@ -487,7 +567,7 @@ bool parseChunks(Tree & tree, ByteInStream & in, ostream & out) {
         // go trough chars
         for (size_t i = 0; i < size; i++) {
             UtfChar c;
-            tree.find(c);
+            tree.find(in, c);
             writeUrfChar(out, c);
             //cout << "Read char: " << c << " - " << (int)c << endl;
         }
@@ -511,7 +591,7 @@ uint16_t readChunkSize(ByteInStream & in) {
     return val;
 }
 
-void writeUrfChar(ostream & out, const UtfChar & letter) {
+void writeUrfChar(ByteOutStream & out, const UtfChar & letter) {
     //cout << "Letter: " << letter << endl;
     uint64_t mask = 0b11111111u << 24;
     for (uint8_t i = 0; i < 4; i++, mask >>= 8) {
@@ -521,7 +601,7 @@ void writeUrfChar(ostream & out, const UtfChar & letter) {
         // skip empty bytes except the last one (for '\0' character)
         if (byte != 0 || mask == 0b11111111u) {
             //cout << "Putting " << (uint16_t) byte << endl;
-            out.put(byte);
+            out.putByte(byte);
         }
     }
 }
@@ -543,12 +623,12 @@ bool decompressFile ( const char * inFileName, const char * outFileName ) {
     FileStreams streams(inFileName, outFileName);
     if (!streams.good()) { return false; }
     ByteInStream in(streams.getIn());
-    //ByteOutStream out(streams.getOut());
+    ByteOutStream out(streams.getOut());
 
     Tree tree(in);
     //tree.printTree(cout);
 
-    if (tree.failed() || !parseChunks(tree, in, streams.getOut())) {
+    if (tree.failed() || !parseChunks(tree, in, out)) {
         return false;
     }
 
@@ -560,10 +640,95 @@ bool decompressFile ( const char * inFileName, const char * outFileName ) {
 }
 
 
+bool readToMap(istream & in, map<UtfChar, size_t> & map) {
+    ByteInStream bIn(in);
+    UtfParser parser(bIn);
+    UtfChar letter;
+    while (in) {
+        in.peek(); // check if the last byte was reached
+        if (in.eof()) return true;
+        if (!parser.readUtfChar(letter) || !in.good()) return false;
 
+        if (map.find(letter) == map.end())
+            map[letter] = 0;
+        map[letter]++;
+    }
+    return false;
+}
+
+uint16_t readChunk(ByteInStream & in, UtfChar * chunk) {
+    UtfParser parser(in);
+    UtfChar letter;
+    uint16_t i = 0;
+    for (; i < chunkDefSize && in.good(); i++) {
+        parser.readUtfChar(letter); // file already read once, bytes should be valid
+        chunk[i] = letter;
+        // cout << "Read " << letter << endl;
+    }
+    return in.good() ? i : i - 1;
+}
+
+void write12bitNumber(ByteOutStream & out, const uint16_t num) {
+    for (uint16_t mask = 1u << 11; mask > 0; mask >>= 1) {
+        out.putBit((num & mask) > 0);
+    }
+}
+
+void writeCharacters(ByteOutStream & out, const Tree & tree, const UtfChar * chunk, const uint16_t size) {
+    vector<bool> position;
+    for (uint16_t i = 0; i < size; i++) {
+        tree.findChar(position, chunk[i]);
+        // cout << "Writing char " << (char) chunk[i] << " - ";
+        for (bool bit : position) {
+            out.putBit(bit);
+            // cout << noboolalpha << bit;
+        }
+        // cout << endl;
+    }
+}
+
+bool writeToFile(ByteInStream & in, ByteOutStream & out, const Tree & tree) {
+    UtfChar chunk[chunkDefSize];
+    uint16_t chunkSize;
+    do {
+        if (!in.good()) return false;
+        chunkSize = readChunk(in, chunk);
+        // cout << "Writing chunk " << chunkSize << " chars long" << endl;
+        if (chunkSize == chunkDefSize) {
+            out.putBit(true);
+        } else {
+            out.putBit(false);
+            write12bitNumber(out, chunkSize);
+        }
+        writeCharacters(out, tree, chunk, chunkSize);
+    } while(chunkSize == chunkDefSize);
+    return true;
+}
+
+bool isSuccessfullyCompressed(FileStreams & streams) {
+    return streams.getIn().eof() && streams.getOut().good();
+}
 
 bool compressFile ( const char * inFileName, const char * outFileName ) {
-    return false;
+    FileStreams streams(inFileName, outFileName);
+    streams.getIn().peek(); // to check empty file, eof() will be true
+    if (!streams.good()) { return false; }
+
+    map<UtfChar, size_t> map; // of letter occurance
+    if (!readToMap(streams.getIn(), map)) return false;
+
+    streams.getIn().seekg(0);
+    ByteInStream in(streams.getIn());
+    ByteOutStream out(streams.getOut());
+
+    Tree tree(map);
+    // tree.printTree(cout);
+    tree.writeTree(out);
+
+    if (!writeToFile(in, out, tree)) return false;
+    if (!isSuccessfullyCompressed(streams)) return false;
+
+    return true;
 }
 
 #ifndef __PROGTEST__
@@ -615,6 +780,7 @@ int main ( void ) {
     testByteOutStream();
 
 
+    // Decompression tests
     assert( identicalFiles( "tests/test0.orig", "tests/test0.orig"));
     assert(!identicalFiles( "tests/test0.orig", "tests/test1.orig"));
 
@@ -666,6 +832,71 @@ int main ( void ) {
 
     assert( decompressFile( "tests/extra9.huf",  "tempfile" ));
     assert( identicalFiles( "tests/extra9.orig", "tempfile" ));
+
+    // Compression tests
+    assert(!compressFile( "/dev/null", "tempcomp" ));
+
+    assert( compressFile(   "tests/test0.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/test0.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/test1.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/test1.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/test2.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/test2.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/test3.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/test3.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/test4.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/test4.orig", "tempfile" ));
+
+
+    assert( compressFile(   "tests/extra0.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra0.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/extra1.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra1.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/extra2.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra2.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/extra3.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra3.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/extra4.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra4.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/extra5.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra5.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/extra6.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra6.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/extra7.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra7.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/extra8.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra8.orig", "tempfile" ));
+
+    assert( compressFile(   "tests/extra9.orig", "tempcomp" ));
+    assert( decompressFile( "tempcomp",   "tempfile" ));
+    assert( identicalFiles( "tests/extra9.orig", "tempfile" ));
+
 
     return 0;
 }
