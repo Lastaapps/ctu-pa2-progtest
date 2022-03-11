@@ -286,6 +286,13 @@ class TNode {
         bool operator < (TNode & other) {
             return mOccurance < other.mOccurance;
         }
+
+        class PointerComparator {
+            public:
+                bool operator() (TNode* n1, TNode* n2) {
+                    return n1 -> mOccurance > n2 -> mOccurance;
+                }
+        };
 };
 
 
@@ -495,7 +502,7 @@ void Tree::find(BitInStream & in, const TNode * node, UtfChar & letter) const {
 }
 
 TNode * Tree::createFromMap(const unordered_map<UtfChar, size_t> & map) {
-    priority_queue<TNode*, vector<TNode*>, greater<TNode*>> queue;
+    priority_queue<TNode*, vector<TNode*>, TNode::PointerComparator> queue;
     for (const auto & [letter, occurance] : map) {
         TNode * node = new TNode(letter, occurance);
         queue.push(node);
@@ -810,6 +817,18 @@ bool identicalFiles ( const char * fileName1, const char * fileName2 ) {
     }
 }
 
+bool sameLengthFiles( const char * fileName1, const char * fileName2 ) {
+    ifstream in1(fileName1), in2(fileName2);
+    while (true) {
+        in1.get();
+        in2.get();
+        if (in1.good() && in2.good()) {
+        } else if (in1.eof() && in2.eof()) {
+            return true;
+        } else return false;
+    }
+}
+
 void testBitInStream() {
 
     istringstream sStream("abc");
@@ -844,10 +863,13 @@ int main ( void ) {
     testBitOutStream();
 
 
-    // Decompression tests
     assert( identicalFiles( "tests/test0.orig", "tests/test0.orig"));
     assert(!identicalFiles( "tests/test0.orig", "tests/test1.orig"));
+    assert( sameLengthFiles( "tests/test0.orig", "tests/test0.orig"));
+    assert(!sameLengthFiles( "tests/test0.orig", "tests/test1.orig"));
 
+
+    // Decompression tests
     assert( decompressFile( "tests/test0.huf",  "tempfile" ));
     assert( identicalFiles( "tests/test0.orig", "tempfile" ));
 
@@ -905,63 +927,78 @@ int main ( void ) {
     assert( compressFile(   "tests/test0.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/test0.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/test0.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/test1.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/test1.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/test1.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/test2.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/test2.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/test2.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/test3.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/test3.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/test3.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/test4.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/test4.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/test4.huf", "tempcomp" ));
 
 
     assert( compressFile(   "tests/extra0.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra0.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra0.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/extra1.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra1.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra1.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/extra2.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra2.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra2.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/extra3.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra3.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra3.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/extra4.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra4.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra4.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/extra5.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra5.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra5.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/extra6.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra6.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra6.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/extra7.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra7.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra7.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/extra8.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra8.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra8.huf", "tempcomp" ));
 
     assert( compressFile(   "tests/extra9.orig", "tempcomp" ));
     assert( decompressFile( "tempcomp",   "tempfile" ));
     assert( identicalFiles( "tests/extra9.orig", "tempfile" ));
+    assert( sameLengthFiles( "tests/extra9.huf", "tempcomp" ));
 
 
     return 0;
