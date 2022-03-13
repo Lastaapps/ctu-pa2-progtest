@@ -35,12 +35,79 @@ class CVATRegister {
 
         bool firstCompany ( string & name, string & addr ) const;
         bool nextCompany ( string & name, string & addr ) const;
-    private:
-        // todo
+
+    class Company {
+        private:
+            const string & mName;
+            const string & mAddr;
+            const string & mId;
+            unsigned int mAmount;
+        public:
+            Company(const string & name, const string & addr,
+                    const string & id, unsigned int amount = 0)
+                : mName(name), mAddr(addr), mId(id), mAmount(amount) {}
+
+        class CompareNameAddr {
+            private:
+                inline char normalizeChar(const char c) const {
+                    return ('a' <= c && c <= 'z') ? c : c - ('A' - 'a');
+                }
+            public:
+                inline bool operator () (const string & s1, const string & s2) const {
+                    size_t length = min(s1.length(), s2.length());
+                    for (size_t i = 0; i < length; i++) {
+                        if (normalizeChar(s1.at(i)) < normalizeChar(s2.at(i))) {
+                            return true;
+                        }
+                    }
+                    return s1.length() < s2.length();
+                }
+                inline bool operator() (const Company & c1, const Company & c2) const {
+                    if ((*this)(c1.mName, c2.mName)) return true;
+                    if ((*this)(c1.mAddr, c2.mAddr)) return true;
+                    return false;
+                }
+        };
+        class CompareIdPtr {
+            public:
+                inline bool operator() (const Company * c1, const Company * c2) const {
+                    return c1 -> mId < c2 -> mId;
+                }
+        };
+    };
 };
 
 #ifndef __PROGTEST__
+
+void testCompare() {
+    CVATRegister::Company::CompareNameAddr cmpNA;
+
+    assert( cmpNA("abc", "def"));
+    assert(!cmpNA("def", "abc"));
+    assert(!cmpNA("abc", "abc"));
+
+    assert( cmpNA("abc", "DEF"));
+    assert( cmpNA("ABC", "def"));
+    assert(!cmpNA("DEF", "abc"));
+    assert(!cmpNA("def", "ABC"));
+    assert(!cmpNA("ABC", "abc"));
+
+    assert( cmpNA("abc", "abcdef"));
+    assert(!cmpNA("abcdef", "abc"));
+
+
+    CVATRegister::Company::CompareNameAddr cmpId;
+
+    assert( cmpId("abc", "def"));
+    assert(!cmpId("def", "abc"));
+    assert(!cmpId("abc", "abc"));
+}
+
 int main ( void ) {
+
+    testCompare();
+    return 0;
+
     string name, addr;
     unsigned int sumIncome;
 
