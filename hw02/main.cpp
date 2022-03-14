@@ -15,6 +15,7 @@
 using namespace std;
 #endif /* __PROGTEST__ */
 
+
 class CVATRegister {
     public:
         CVATRegister ( void );
@@ -36,51 +37,135 @@ class CVATRegister {
         bool firstCompany ( string & name, string & addr ) const;
         bool nextCompany ( string & name, string & addr ) const;
 
-    class Company {
-        private:
-            const string & mName;
-            const string & mAddr;
-            const string & mId;
-            unsigned int mAmount;
-        public:
-            Company(const string & name, const string & addr,
-                    const string & id, unsigned int amount = 0)
-                : mName(name), mAddr(addr), mId(id), mAmount(amount) {}
-
-        class CompareNameAddr {
+        class Company {
             private:
-                inline char normalizeChar(const char c) const {
-                    return ('a' <= c && c <= 'z') ? c : c - ('A' - 'a');
-                }
+                string mName;
+                string mAddr;
+                string mId;
+                unsigned int mAmount;
             public:
-                inline bool operator () (const string & s1, const string & s2) const {
-                    size_t length = min(s1.length(), s2.length());
-                    for (size_t i = 0; i < length; i++) {
-                        if (normalizeChar(s1.at(i)) < normalizeChar(s2.at(i))) {
-                            return true;
+                Company(const string & name, const string & addr,
+                        const string & id, unsigned int amount = 0)
+                    : mName(name), mAddr(addr), mId(id), mAmount(amount) {}
+                /*Company(const Company & c)
+                  :mName(c.mName), mAddr(c.mAddr), mId(c.mId), mAmount(c.mAmount) {}
+
+                  inline Company operator = (const Company & c) {
+                  return Company(c);
+                  }*/
+
+                void print(ostream & out) const;
+
+                struct CompareNameAddr {
+                    private:
+                        inline char normalizeChar(const char c) const {
+                            return ('a' <= c && c <= 'z') ? c : c - ('A' - 'a');
                         }
-                    }
-                    return s1.length() < s2.length();
-                }
-                inline bool operator() (const Company & c1, const Company & c2) const {
-                    if ((*this)(c1.mName, c2.mName)) return true;
-                    if ((*this)(c1.mAddr, c2.mAddr)) return true;
-                    return false;
-                }
+                    public:
+                        inline bool operator () (const string & s1, const string & s2) const {
+                            size_t length = min(s1.length(), s2.length());
+                            for (size_t i = 0; i < length; i++) {
+                                if (normalizeChar(s1.at(i)) < normalizeChar(s2.at(i))) {
+                                    return true;
+                                }
+                            }
+                            return s1.length() < s2.length();
+                        }
+                        inline bool operator() (const Company * c1, const Company * c2) const {
+                            if ((*this)(c1 -> mName, c2 -> mName)) return true;
+                            if ((*this)(c1 -> mAddr, c2 -> mAddr)) return true;
+                            return false;
+                        }
+                };
+                struct CompareId {
+                    public:
+                        inline bool operator() (const Company * c1, const Company * c2) const {
+                            return c1 -> mId < c2 -> mId;
+                        }
+                };
         };
-        class CompareIdPtr {
-            public:
-                inline bool operator() (const Company * c1, const Company * c2) const {
-                    return c1 -> mId < c2 -> mId;
-                }
-        };
-    };
+
+        void printList(ostream & out) const;
+        void printIds(ostream & out) const;
+
+    private:
+        vector<const Company*> mList;
+        vector<const Company*> mIds;
+
+        bool bSearchName(const Company * c, size_t & index) const;
+        bool bSearchId(const Company * c, size_t & index) const;
+
 };
+
+typedef CVATRegister Reg;
+
+Reg::CVATRegister(void) {}
+Reg::~CVATRegister(void) {
+    for (auto ptr : mList) delete ptr;
+}
+
+bool Reg::newCompany ( const string & name, const string & addr, const string & taxID ) {
+    const Company * c = new Company(name, addr, taxID);
+    size_t indexName, indexId;
+    if (bSearchName(c, indexName) || bSearchId(c, indexId)) {
+        delete c;
+        return false;
+    } else {
+        mList.insert(mList.begin(), c);
+        mIds.insert(mIds.begin(), c);
+
+        return true;
+    }
+}
+
+bool Reg::bSearchName(const Reg::Company * c, size_t & index) const {
+    Reg::Company::CompareNameAddr cmp;
+    auto & list = mList;
+    auto lower = lower_bound(list.begin(), list.end(), c, cmp);
+    index = distance(list.begin(), lower);
+    if (lower == list.end()) return false;
+    return cmp(*lower, c) && cmp(c, *lower);
+}
+
+bool Reg::bSearchId(const Reg::Company * c, size_t & index) const {
+    Reg::Company::CompareId cmp;
+    auto & list = mIds;
+    auto lower = lower_bound(list.begin(), list.end(), c, cmp);
+    index = distance(list.begin(), lower);
+    if (lower == list.end()) return false;
+    return cmp(*lower, c) && cmp(c, *lower);
+}
+
+
+
+
+
+void Reg::Company::print(ostream & out = cout) const {
+    out << "[" << mName << ", " << mAddr << ", " << mId << ", " << mAmount << "]";
+}
+void Reg::printList(ostream & out = cout) const {
+    out << "List: Total of " << mList.size() << " items" << endl;
+    for (size_t i = 0; i < mList.size(); i++) {
+        out << i << ". ";
+        mList[i] -> print(out);
+        out << "\n";
+    }
+    out.flush();
+}
+void Reg::printIds(ostream & out = cout) const {
+    out << "IDs: Total of " << mIds.size() << " items" << endl;
+    for (size_t i = 0; i < mIds.size(); i++) {
+        out << i << ". ";
+        mIds[i] -> print(out);
+        out << "\n";
+    }
+    out.flush();
+}
 
 #ifndef __PROGTEST__
 
 void testCompare() {
-    CVATRegister::Company::CompareNameAddr cmpNA;
+    Reg::Company::CompareNameAddr cmpNA;
 
     assert( cmpNA("abc", "def"));
     assert(!cmpNA("def", "abc"));
@@ -94,27 +179,28 @@ void testCompare() {
 
     assert( cmpNA("abc", "abcdef"));
     assert(!cmpNA("abcdef", "abc"));
-
-
-    CVATRegister::Company::CompareNameAddr cmpId;
-
-    assert( cmpId("abc", "def"));
-    assert(!cmpId("def", "abc"));
-    assert(!cmpId("abc", "abc"));
 }
 
 int main ( void ) {
 
     testCompare();
-    return 0;
 
     string name, addr;
-    unsigned int sumIncome;
+    //unsigned int sumIncome;
 
     CVATRegister b1;
     assert( b1.newCompany ( "ACME", "Thakurova", "666/666" ) );
+    b1.printList();
+    b1.printIds();
     assert( b1.newCompany ( "ACME", "Kolejni", "666/666/666" ) );
+    b1.printList();
+    b1.printIds();
     assert( b1.newCompany ( "Dummy", "Thakurova", "123456" ) );
+
+    b1.printList();
+    b1.printIds();
+    return 0;
+#ifdef something_random
     assert( b1.invoice ( "666/666", 2000 ) );
     assert( b1.medianInvoice () == 2000 );
     assert( b1.invoice ( "666/666/666", 3000 ) );
@@ -183,7 +269,7 @@ int main ( void ) {
     assert( b2.newCompany ( "ACME", "Kolejni", "abcdef" ) );
     assert( b2.cancelCompany ( "ACME", "Kolejni" ) );
     assert(!b2.cancelCompany ( "ACME", "Kolejni" ) );
-
+#endif
     return EXIT_SUCCESS;
 }
 #endif /* __PROGTEST__ */
