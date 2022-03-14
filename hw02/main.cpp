@@ -26,8 +26,8 @@ class CVATRegister {
         bool cancelCompany ( const string & name, const string & addr );
         bool cancelCompany ( const string & taxID );
 
-        bool invoice ( const string & taxID, unsigned int amount );
         bool invoice ( const string & name, const string & addr, unsigned int amount );
+        bool invoice ( const string & taxID, unsigned int amount );
 
         bool audit ( const string & name, const string & addr, unsigned int & sumIncome ) const;
         bool audit ( const string & taxID, unsigned int & sumIncome ) const;
@@ -37,7 +37,7 @@ class CVATRegister {
         bool firstCompany ( string & name, string & addr ) const;
         bool nextCompany ( string & name, string & addr ) const;
 
-        class Company {
+        struct Company {
             private:
                 string mName;
                 string mAddr;
@@ -54,6 +54,10 @@ class CVATRegister {
                   return Company(c);
                   }*/
 
+                void addAmount(unsigned int amount);
+                const string & getName() const;
+                const string & getAddr() const;
+                unsigned int getAmount() const;
                 void print(ostream & out) const;
 
                 struct CompareNameAddr {
@@ -65,9 +69,10 @@ class CVATRegister {
                         inline bool operator () (const string & s1, const string & s2) const {
                             size_t length = min(s1.length(), s2.length());
                             for (size_t i = 0; i < length; i++) {
-                                if (normalizeChar(s1.at(i)) < normalizeChar(s2.at(i))) {
-                                    return true;
-                                }
+                                char c1 = normalizeChar(s1.at(i));
+                                char c2 = normalizeChar(s2.at(i));
+                                if (c1 < c2) return true;
+                                else if (c1 > c2) return false;
                             }
                             return s1.length() < s2.length();
                         }
@@ -89,12 +94,12 @@ class CVATRegister {
         void printIds(ostream & out) const;
 
     private:
-        vector<const Company*> mList;
-        vector<const Company*> mIds;
+        vector<Company*> mList;
+        vector<Company*> mIds;
+        vector<unsigned int> mInvoices;
 
         bool bSearchName(const Company * c, size_t & index) const;
         bool bSearchId(const Company * c, size_t & index) const;
-
 };
 
 typedef CVATRegister Reg;
@@ -105,7 +110,7 @@ Reg::~CVATRegister(void) {
 }
 
 bool Reg::newCompany ( const string & name, const string & addr, const string & taxID ) {
-    const Company * c = new Company(name, addr, taxID);
+    Company * c = new Company(name, addr, taxID);
     size_t indexName, indexId;
     if (bSearchName(c, indexName) || bSearchId(c, indexId)) {
         delete c;
@@ -113,11 +118,9 @@ bool Reg::newCompany ( const string & name, const string & addr, const string & 
     } else {
         mList.insert(mList.begin() + indexName, c);
         mIds.insert(mIds.begin() + indexId, c);
-
         return true;
     }
 }
-
 
 bool Reg::cancelCompany ( const string & name, const string & addr ) {
     Company c(name, addr, "");
@@ -144,27 +147,94 @@ bool Reg::cancelCompany ( const string & taxID ) {
     } else return false;
 }
 
+bool Reg::invoice ( const string & name, const string & addr, unsigned int amount ) {
+    Company c(name, addr, "");
+    size_t indexName;
+    if (bSearchName(&c, indexName)) {
+        mList[indexName] -> addAmount(amount);
+        mInvoices.push_back(amount);
+        return true;
+    } else return false;
+}
+bool Reg::invoice ( const string & taxID, unsigned int amount ) {
+    Company c("", "", taxID);
+    size_t indexId;
+    if (bSearchId(&c, indexId)) {
+        mIds[indexId] -> addAmount(amount);
+        mInvoices.push_back(amount);
+        return true;
+    } else return false;
+}
+
+
+bool Reg::audit ( const string & name, const string & addr, unsigned int & sumIncome ) const {
+    Company c(name, addr, "");
+    size_t indexName;
+    if (bSearchName(&c, indexName)) {
+        sumIncome = mList[indexName] -> getAmount();
+        return true;
+    } else return false;
+}
+bool Reg::audit ( const string & taxID, unsigned int & sumIncome ) const {
+    Company c("", "", taxID);
+    size_t indexId;
+    if (bSearchId(&c, indexId)) {
+        sumIncome = mIds[indexId] -> getAmount();
+        return true;
+    } else return false;
+}
+
+unsigned int Reg::medianInvoice ( void ) const {
+    vector<unsigned int> stupidCopy = mInvoices;
+    sort(stupidCopy.begin(), stupidCopy.end());
+    size_t size = stupidCopy.size();
+    if (size == 0) return 0;
+    return stupidCopy[size / 2];
+}
+
+bool Reg::firstCompany ( string & name, string & addr ) const {
+    if (mList.size() == 0) return false;
+    const Company * c = mList[0];
+    name = c -> getName();
+    addr = c -> getAddr();
+    return true;
+}
+bool Reg::nextCompany ( string & name, string & addr ) const {
+    Company c(name, addr, "");
+    size_t indexName;
+    if (bSearchName(&c, indexName)) {
+        if (indexName + 1 >= mList.size()) return false;
+        Company * next = mList[indexName + 1];
+        name = next -> getName();
+        addr = next -> getAddr();
+        return true;
+    } else return false;
+}
+
 bool Reg::bSearchName(const Reg::Company * c, size_t & index) const {
     Reg::Company::CompareNameAddr cmp;
     auto & list = mList;
     auto lower = lower_bound(list.begin(), list.end(), c, cmp);
     index = distance(list.begin(), lower);
     if (lower == list.end()) return false;
-    return cmp(*lower, c) && cmp(c, *lower);
+    return !cmp(*lower, c) && !cmp(c, *lower);
 }
-
 bool Reg::bSearchId(const Reg::Company * c, size_t & index) const {
     Reg::Company::CompareId cmp;
     auto & list = mIds;
     auto lower = lower_bound(list.begin(), list.end(), c, cmp);
     index = distance(list.begin(), lower);
     if (lower == list.end()) return false;
-    return cmp(*lower, c) && cmp(c, *lower);
+    return !cmp(*lower, c) && !cmp(c, *lower);
 }
 
 
 
 
+void Reg::Company::addAmount(unsigned int amount) { mAmount += amount; }
+const string & Reg::Company::getName() const { return mName; }
+const string & Reg::Company::getAddr() const { return mAddr; }
+unsigned int Reg::Company::getAmount() const { return mAmount; }
 
 void Reg::Company::print(ostream & out = cout) const {
     out << "[" << mName << ", " << mAddr << ", " << mId << ", " << mAmount << "]";
@@ -212,21 +282,17 @@ int main ( void ) {
     testCompare();
 
     string name, addr;
-    //unsigned int sumIncome;
+    unsigned int sumIncome;
 
     CVATRegister b1;
+    assert( b1.medianInvoice () == 0 );
     assert( b1.newCompany ( "ACME", "Thakurova", "666/666" ) );
-    b1.printList();
-    b1.printIds();
     assert( b1.newCompany ( "ACME", "Kolejni", "666/666/666" ) );
-    b1.printList();
-    b1.printIds();
     assert( b1.newCompany ( "Dummy", "Thakurova", "123456" ) );
-
     b1.printList();
     b1.printIds();
-    return 0;
-#ifdef something_random
+
+    assert( b1.medianInvoice () == 0 );
     assert( b1.invoice ( "666/666", 2000 ) );
     assert( b1.medianInvoice () == 2000 );
     assert( b1.invoice ( "666/666/666", 3000 ) );
@@ -295,7 +361,7 @@ int main ( void ) {
     assert( b2.newCompany ( "ACME", "Kolejni", "abcdef" ) );
     assert( b2.cancelCompany ( "ACME", "Kolejni" ) );
     assert(!b2.cancelCompany ( "ACME", "Kolejni" ) );
-#endif
+
     return EXIT_SUCCESS;
 }
 #endif /* __PROGTEST__ */
