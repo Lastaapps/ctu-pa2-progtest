@@ -111,11 +111,37 @@ bool Reg::newCompany ( const string & name, const string & addr, const string & 
         delete c;
         return false;
     } else {
-        mList.insert(mList.begin(), c);
-        mIds.insert(mIds.begin(), c);
+        mList.insert(mList.begin() + indexName, c);
+        mIds.insert(mIds.begin() + indexId, c);
 
         return true;
     }
+}
+
+
+bool Reg::cancelCompany ( const string & name, const string & addr ) {
+    Company c(name, addr, "");
+    size_t indexName, indexId;
+    if (bSearchName(&c, indexName)) {
+        const Company * toDelete = mList[indexName];
+        bSearchId(toDelete, indexId);
+        mList.erase(mList.begin() + indexName);
+        mIds.erase(mIds.begin() + indexId);
+        delete toDelete;
+        return true;
+    } else return false;
+}
+bool Reg::cancelCompany ( const string & taxID ) {
+    Company c("", "", taxID);
+    size_t indexName, indexId;
+    if (bSearchId(&c, indexId)) {
+        const Company * toDelete = mIds[indexId];
+        bSearchName(toDelete, indexName);
+        mList.erase(mList.begin() + indexName);
+        mIds.erase(mIds.begin() + indexId);
+        delete toDelete;
+        return true;
+    } else return false;
 }
 
 bool Reg::bSearchName(const Reg::Company * c, size_t & index) const {
