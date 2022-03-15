@@ -65,20 +65,27 @@ class CVATRegister {
                         inline char normalizeChar(const char c) const {
                             return ('a' <= c && c <= 'z') ? c : c - ('A' - 'a');
                         }
-                    public:
-                        inline bool operator () (const string & s1, const string & s2) const {
+                        inline char comp (const string & s1, const string & s2) const {
                             size_t length = min(s1.length(), s2.length());
                             for (size_t i = 0; i < length; i++) {
                                 char c1 = normalizeChar(s1.at(i));
                                 char c2 = normalizeChar(s2.at(i));
-                                if (c1 < c2) return true;
-                                else if (c1 > c2) return false;
+                                if (c1 < c2) return -1;
+                                else if (c1 > c2) return 1;
                             }
-                            return s1.length() < s2.length();
+                            if (s1.length() < s2.length()) return -1;
+                            if (s1.length() > s2.length()) return  1;
+                            return 0;
+                        }
+                    public:
+                        inline bool operator () (const string & s1, const string & s2) const {
+                            return comp(s1, s2) < 0;
                         }
                         inline bool operator() (const Company * c1, const Company * c2) const {
-                            if ((*this)(c1 -> mName, c2 -> mName)) return true;
-                            if ((*this)(c1 -> mAddr, c2 -> mAddr)) return true;
+                            char nameCmp = comp(c1 -> mName, c2 -> mName);
+                            if (nameCmp < 0) return true;
+                            if (nameCmp > 0) return false;
+                            if (comp(c1 -> mAddr, c2 -> mAddr) < 0) return true;
                             return false;
                         }
                 };
@@ -90,6 +97,31 @@ class CVATRegister {
                 };
         };
 
+        template <class Compare>
+        class PriorityQueue {
+            private:
+                vector<unsigned int> mData;
+                Compare mCmp;
+            public:
+                unsigned int & top();
+                unsigned int top() const;
+                PriorityQueue<Compare> & push(const unsigned int item);
+                unsigned int pop();
+                size_t size() const;
+                size_t lastIndex() const;
+                bool empty() const;
+                void print(ostream & out) const;
+            private:
+                void repairTop();
+                void repairChild();
+                void repairTop(const size_t topIndex);
+                void repairChild(const size_t childIndex);
+                void swapItems(const size_t i1, const size_t i2);
+                size_t parInd(const size_t index) const;
+                size_t leftInd(const size_t index) const;
+                size_t rightInd(const size_t index) const;
+        };
+
         void printList(ostream & out) const;
         void printIds(ostream & out) const;
 
@@ -97,6 +129,8 @@ class CVATRegister {
         vector<Company*> mList;
         vector<Company*> mIds;
         vector<unsigned int> mInvoices;
+        PriorityQueue<greater<unsigned int>> mMin;
+        PriorityQueue<less<unsigned int>> mMax;
 
         bool bSearchName(const Company * c, size_t & index) const;
         bool bSearchId(const Company * c, size_t & index) const;
@@ -107,6 +141,9 @@ typedef CVATRegister Reg;
 Reg::CVATRegister(void) {}
 Reg::~CVATRegister(void) {
     for (auto ptr : mList) delete ptr;
+    mList.clear();
+    mIds.clear();
+    mInvoices.clear();
 }
 
 bool Reg::newCompany ( const string & name, const string & addr, const string & taxID ) {
@@ -229,15 +266,101 @@ bool Reg::bSearchId(const Reg::Company * c, size_t & index) const {
 }
 
 
-
-
 void Reg::Company::addAmount(unsigned int amount) { mAmount += amount; }
 const string & Reg::Company::getName() const { return mName; }
 const string & Reg::Company::getAddr() const { return mAddr; }
 unsigned int Reg::Company::getAmount() const { return mAmount; }
 
+
+template <class Compare>
+unsigned int & Reg::PriorityQueue<Compare>::top() { return mData[0]; }
+template <class Compare>
+unsigned int Reg::PriorityQueue<Compare>::top() const { return mData[0]; }
+
+template <class Compare>
+Reg::PriorityQueue<Compare> & Reg::PriorityQueue<Compare>::push(const unsigned int item) {
+    mData.push_back(item);
+    repairChild();
+    return *this;
+}
+template <class Compare>
+unsigned int Reg::PriorityQueue<Compare>::pop() {
+    const unsigned int topItem = top();
+    mData[0] = mData.back();
+    mData.pop_back();
+    repairTop();
+    return topItem;
+}
+
+template <class Compare>
+inline void Reg::PriorityQueue<Compare>::repairTop() { repairTop(0); }
+template <class Compare>
+inline void Reg::PriorityQueue<Compare>::repairChild() { repairChild(lastIndex()); }
+
+template <class Compare>
+void Reg::PriorityQueue<Compare>::repairTop(const size_t topIndex) {
+    const size_t last = lastIndex();
+    const size_t left = leftInd(topIndex);
+    const size_t right = left + 1;
+
+    if (left > last) return;
+    const size_t maxChild =
+        (right <= last && mCmp(mData[left], mData[right])) ? right : left;
+    /*cout << "top " << topIndex
+      << " left " << left
+      << " right " << right
+      << " max " << maxChild
+      << " last " << last << endl;*/
+    if (mCmp(mData[topIndex], mData[maxChild])) {
+        swapItems(topIndex, maxChild);
+        repairTop(maxChild);
+    }
+}
+template <class Compare>
+void Reg::PriorityQueue<Compare>::repairChild(const size_t childIndex) {
+    if (childIndex == 0) return;   
+    size_t parent = parInd(childIndex);
+
+    if(mCmp(mData[parent], mData[childIndex])) {
+        swapItems(parent, childIndex);
+        repairChild(parent);
+    }
+}
+template <class Compare>
+void Reg::PriorityQueue<Compare>::swapItems(const size_t i1, const size_t i2) {
+    unsigned int tmp = mData[i1];
+    mData[i1] = mData[i2];
+    mData[i2] = tmp;
+}
+
+template <class Compare>
+inline size_t Reg::PriorityQueue<Compare>::parInd(const size_t index) const { return (index - 1) / 2; }
+template <class Compare>
+inline size_t Reg::PriorityQueue<Compare>::leftInd(const size_t index) const { return index * 2 + 1; }
+template <class Compare>
+inline size_t Reg::PriorityQueue<Compare>::rightInd(const size_t index) const { return leftInd(index) + 1; }
+
+template <class Compare>
+size_t Reg::PriorityQueue<Compare>::size() const { return mData.size(); }
+template <class Compare>
+inline size_t Reg::PriorityQueue<Compare>::lastIndex() const {
+    const size_t s = size();
+    return s == 0 ? 0 : s - 1;
+}
+template <class Compare>
+inline bool Reg::PriorityQueue<Compare>::empty() const { return size() == 0; }
+
+
+
 void Reg::Company::print(ostream & out = cout) const {
     out << "[" << mName << ", " << mAddr << ", " << mId << ", " << mAmount << "]";
+}
+template <class Compare>
+void Reg::PriorityQueue<Compare>::print(ostream & out) const {
+    out << "Queue has " << mData.size() << " items" << endl;
+    for (auto & item : mData)
+        out << item << ", ";
+    out << endl;
 }
 void Reg::printList(ostream & out = cout) const {
     out << "List: Total of " << mList.size() << " items" << endl;
@@ -275,22 +398,73 @@ void testCompare() {
 
     assert( cmpNA("abc", "abcdef"));
     assert(!cmpNA("abcdef", "abc"));
+
+    cout << "String comparions passed!" << endl;
 }
 
-int main ( void ) {
+void testQueue() {
+    Reg::PriorityQueue<greater<unsigned int>> q0;
+    assert( q0.empty() );
+    q0.push(1);
+    assert(!q0.empty() );
+    assert( q0.top() == 1);
+    assert( q0.pop() == 1);
+    assert( q0.empty() );
 
-    testCompare();
+    // 0, 1, ...
+    vector<unsigned int> data1 = {4, 1, 10, 2, 5, 4, 3, 8, 0, 6};
+    Reg::PriorityQueue<greater<unsigned int>> q1;
+    for (auto c : data1) {
+        q1.push(c);
+        //q1.print(cout);
+    }
+    assert( q1.size() == data1.size() );
+    sort(data1.begin(), data1.end(), less<unsigned int>());
+    for (auto c : data1) {
+        assert(c == q1.pop());
+        //q1.print(cout);
+    }
+    assert( q1.empty() );
 
+    // 10, 8, ...
+    vector<unsigned int> data2 = {4, 1, 10, 2, 5, 4, 3, 8, 0, 6};
+    Reg::PriorityQueue<less<unsigned int>> q2;
+    for (auto c : data2) q2.push(c);
+    assert( q2.size() == data1.size() );
+    sort(data2.begin(), data2.end(), greater<unsigned int>());
+    for (auto c : data2) assert(c == q2.pop());
+    assert( q2.empty() );
+
+    cout << "Priority queue test passed!" << endl;
+}
+
+void testProgtest() {
     string name, addr;
     unsigned int sumIncome;
 
     CVATRegister b1;
+    assert( b1.newCompany ( "ACME", "Thakurova", "666/666" ) );
+    assert( b1.newCompany ( "ACME", "Kolejni", "666/666/666" ) );
+    assert( b1.newCompany ( "Dummy", "Thakurova", "123456" ) );
+    assert(!b1.newCompany ( "Dummy", "Thakurova", "123457" ) );
+    assert( b1.newCompany ( "Dammy", "Thakurova", "123458" ) );
+    assert( b1.newCompany ( "Dzmmy", "Thakurova", "123459" ) );
+    assert( b1.newCompany ( "Dummy", "Taakurova", "123460" ) );
+    assert( b1.newCompany ( "Dummy", "Tzakurova", "123461" ) );
+
+    assert( b1.cancelCompany( "666/666" ) );
+    assert( b1.cancelCompany( "666/666/666" ) );
+    assert( b1.cancelCompany( "123456" ) );
+    assert(!b1.cancelCompany( "123456" ) );
+    assert( b1.cancelCompany( "123458" ) );
+    assert( b1.cancelCompany( "123459" ) );
+    assert( b1.cancelCompany( "123460" ) );
+    assert( b1.cancelCompany( "123461" ) );
+
     assert( b1.medianInvoice () == 0 );
     assert( b1.newCompany ( "ACME", "Thakurova", "666/666" ) );
     assert( b1.newCompany ( "ACME", "Kolejni", "666/666/666" ) );
     assert( b1.newCompany ( "Dummy", "Thakurova", "123456" ) );
-    b1.printList();
-    b1.printIds();
 
     assert( b1.medianInvoice () == 0 );
     assert( b1.invoice ( "666/666", 2000 ) );
@@ -331,7 +505,7 @@ int main ( void ) {
     assert( b1.medianInvoice () == 2000 );
     assert( b1.firstCompany ( name, addr ) && name == "Dummy" && addr == "Thakurova" );
     assert(!b1.nextCompany ( name, addr ) );
-    assert(b1.cancelCompany ( "123456" ) );
+    assert( b1.cancelCompany ( "123456" ) );
     assert(!b1.firstCompany ( name, addr ) );
 
     CVATRegister b2;
@@ -361,6 +535,17 @@ int main ( void ) {
     assert( b2.newCompany ( "ACME", "Kolejni", "abcdef" ) );
     assert( b2.cancelCompany ( "ACME", "Kolejni" ) );
     assert(!b2.cancelCompany ( "ACME", "Kolejni" ) );
+
+    cout << "ProgTest passed!" << endl;
+}
+
+int main ( void ) {
+
+    testCompare();
+    testQueue();
+    testProgtest();
+
+    cout << "All tests have passed!" << endl;
 
     return EXIT_SUCCESS;
 }
