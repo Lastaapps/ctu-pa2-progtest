@@ -110,6 +110,7 @@ class CVATRegister {
                 size_t size() const;
                 size_t lastIndex() const;
                 bool empty() const;
+                void clear();
                 void print(ostream & out) const;
             private:
                 void repairTop();
@@ -128,10 +129,10 @@ class CVATRegister {
     private:
         vector<Company*> mList;
         vector<Company*> mIds;
-        vector<unsigned int> mInvoices;
-        PriorityQueue<greater<unsigned int>> mMin;
-        PriorityQueue<less<unsigned int>> mMax;
+        PriorityQueue<less<unsigned int>> mSmaller;
+        PriorityQueue<greater<unsigned int>> mGreater;
 
+        void addInvoice(const unsigned int amount);
         bool bSearchName(const Company * c, size_t & index) const;
         bool bSearchId(const Company * c, size_t & index) const;
 };
@@ -143,7 +144,8 @@ Reg::~CVATRegister(void) {
     for (auto ptr : mList) delete ptr;
     mList.clear();
     mIds.clear();
-    mInvoices.clear();
+    mSmaller.clear();
+    mGreater.clear();
 }
 
 bool Reg::newCompany ( const string & name, const string & addr, const string & taxID ) {
@@ -189,7 +191,7 @@ bool Reg::invoice ( const string & name, const string & addr, unsigned int amoun
     size_t indexName;
     if (bSearchName(&c, indexName)) {
         mList[indexName] -> addAmount(amount);
-        mInvoices.push_back(amount);
+        addInvoice(amount);
         return true;
     } else return false;
 }
@@ -198,9 +200,18 @@ bool Reg::invoice ( const string & taxID, unsigned int amount ) {
     size_t indexId;
     if (bSearchId(&c, indexId)) {
         mIds[indexId] -> addAmount(amount);
-        mInvoices.push_back(amount);
+        addInvoice(amount);
         return true;
     } else return false;
+}
+void Reg::addInvoice(const unsigned int amount) {
+    if (mSmaller.empty()) mGreater.push(amount);
+    else if (mSmaller.top() < amount) mGreater.push(amount);
+    else mSmaller.push(amount);
+    if (mSmaller.size() > mGreater.size())
+        mGreater.push(mSmaller.pop());
+    else if (mSmaller.size() + 1 < mGreater.size())
+        mSmaller.push(mGreater.pop());
 }
 
 
@@ -222,11 +233,8 @@ bool Reg::audit ( const string & taxID, unsigned int & sumIncome ) const {
 }
 
 unsigned int Reg::medianInvoice ( void ) const {
-    vector<unsigned int> stupidCopy = mInvoices;
-    sort(stupidCopy.begin(), stupidCopy.end());
-    size_t size = stupidCopy.size();
-    if (size == 0) return 0;
-    return stupidCopy[size / 2];
+    if (mGreater.empty()) return 0;
+    return mGreater.top();
 }
 
 bool Reg::firstCompany ( string & name, string & addr ) const {
@@ -349,6 +357,10 @@ inline size_t Reg::PriorityQueue<Compare>::lastIndex() const {
 }
 template <class Compare>
 inline bool Reg::PriorityQueue<Compare>::empty() const { return size() == 0; }
+template <class Compare>
+void Reg::PriorityQueue<Compare>::clear() {
+    mData.clear();
+}
 
 
 
@@ -399,7 +411,7 @@ void testCompare() {
     assert( cmpNA("abc", "abcdef"));
     assert(!cmpNA("abcdef", "abc"));
 
-    cout << "String comparions passed!" << endl;
+    cout << "PASSED: String comparison" << endl;
 }
 
 void testQueue() {
@@ -435,7 +447,7 @@ void testQueue() {
     for (auto c : data2) assert(c == q2.pop());
     assert( q2.empty() );
 
-    cout << "Priority queue test passed!" << endl;
+    cout << "PASSED: Priority queue" << endl;
 }
 
 void testProgtest() {
@@ -536,7 +548,7 @@ void testProgtest() {
     assert( b2.cancelCompany ( "ACME", "Kolejni" ) );
     assert(!b2.cancelCompany ( "ACME", "Kolejni" ) );
 
-    cout << "ProgTest passed!" << endl;
+    cout << "PASSED: ProgTest" << endl;
 }
 
 int main ( void ) {
@@ -545,7 +557,7 @@ int main ( void ) {
     testQueue();
     testProgtest();
 
-    cout << "All tests have passed!" << endl;
+    cout << "All tests have PASSED!" << endl;
 
     return EXIT_SUCCESS;
 }
