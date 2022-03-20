@@ -11,26 +11,176 @@
 using namespace std;
 #endif /* __PROGTEST__ */
 
-//=================================================================================================
 // a dummy exception class, keep this implementation
 class InvalidDateException : public invalid_argument {
     public:
         InvalidDateException ( )
             : invalid_argument ( "invalid date or format" ) {}
 };
-//=================================================================================================
-// date_format manipulator - a dummy implementation. Keep this code unless you implement your
-// own working manipulator.
+// date_format manipulator
 ios_base & ( * date_format ( const char * fmt ) ) ( ios_base & x ) {
     return [] ( ios_base & ios ) -> ios_base & { return ios; };
 }
-//=================================================================================================
+
+
 class CDate {
-    // todo
+    private:
+        const uint8_t JANUARY = 1;
+        int mYear;
+        int mMonth;
+        int mDay;
+    public:
+        CDate(const int year, const int month, const int day);
+        CDate operator +(const int days) const;
+        CDate operator -(const int days) const;
+        int operator-(const CDate & date) const;
+        CDate operator++(int);
+        CDate operator--(int);
+        CDate & operator++();
+        CDate & operator--();
+        bool operator < (const CDate & date) const;
+        bool operator > (const CDate & date) const;
+        bool operator <=(const CDate & date) const;
+        bool operator >=(const CDate & date) const;
+        bool operator ==(const CDate & date) const;
+        bool operator !=(const CDate & date) const;
+        friend ostream & operator << (ostream & out, const CDate & date);
+        friend istream & operator >> (istream & in, CDate & date);
+    private:
+        static bool checkValid(const int year, const int month, const int day);
+        static int daysInMonth(const int month, const bool isLeap);
+        static bool isLeap(const int year);
+        static int leapInInterval(int start, int end);
+
+        friend void testIsLeap();
+        friend void testLeapInInterval();
 };
 
+CDate::CDate(int year, int month, int day)
+    : mYear(year), mMonth(month), mDay(day) {
+        if (!checkValid(year, month, day))
+            throw "InvalidDateException";
+    }
+
+bool CDate::checkValid(const int year, const int month, const int day) {
+    if (month < 1 || 12 < month) return false;
+    if (day < 1 || CDate::daysInMonth(month, isLeap(year)) < day) return false;
+    return true;
+}
+bool CDate::isLeap(const int year) {
+    return (year % 400 == 0 || year % 100 != 0) && year % 4 == 0;
+}
+int CDate::leapInInterval(int start, int end) {
+	start -= 1; end -= 1;
+	return 0 + (end / 400 - start / 400)
+		- (end / 100 - start / 100)
+		+ (end / 4 - start / 4);
+}
+int CDate::daysInMonth(const int month, const bool isLeap) {
+    switch (month) {
+        case  1: return 31;
+        case  2: return isLeap ? 29 : 28;
+        case  3: return 31;
+        case  4: return 30;
+        case  5: return 31;
+        case  6: return 30;
+        case  7: return 31;
+        case  8: return 31;
+        case  9: return 30;
+        case 10: return 31;
+        case 11: return 30;
+        case 12: return 31;
+        default: throw "Unknown month";
+    }
+}
+
+bool CDate::operator < (const CDate & date) const {
+    if (mYear  < date.mYear ) return true;
+    if (mYear  > date.mYear ) return false;
+    if (mMonth < date.mMonth) return true;
+    if (mMonth > date.mMonth) return false;
+    if (mDay   < date.mDay  ) return true;
+    if (mDay   > date.mDay  ) return false;
+    return false;
+}
+inline bool CDate::operator > (const CDate & date) const {
+    return !(*this <= date);
+}
+bool CDate::operator <=(const CDate & date) const {
+    if (mYear  < date.mYear ) return true;
+    if (mYear  > date.mYear ) return false;
+    if (mMonth < date.mMonth) return true;
+    if (mMonth > date.mMonth) return false;
+    if (mDay   < date.mDay  ) return true;
+    if (mDay   > date.mDay  ) return false;
+    return true;
+}
+inline bool CDate::operator >=(const CDate & date) const {
+    return !(*this < date);
+}
+bool CDate::operator ==(const CDate & date) const {
+    if (mYear  != date.mYear ) return false;
+    if (mMonth != date.mMonth) return false;
+    if (mDay   != date.mDay  ) return false;
+    return true;
+}
+inline bool CDate::operator !=(const CDate & date) const {
+    return !(*this == date);
+}
+ostream & operator << (ostream & out, const CDate & date) {
+    return out
+        << setw(4) << setfill('0') << date.mYear << '-'
+        << setw(2) << setfill('0') << date.mMonth << '-'
+        << setw(2) << setfill('0') << date.mDay << endl;
+}
+istream & operator >> (istream & in, CDate & date) {
+    int year, month, day;
+    char dash;
+    in >> year;
+    in >> dash;
+    if (dash != '-') {
+        in.setstate(std::ios::failbit);
+        return in;
+    }
+    in >> month;
+    in >> dash;
+    if (dash != '-') {
+        in.setstate(std::ios::failbit);
+        return in;
+    }
+    in >> day;
+    if (!CDate::checkValid(year, month, day)) {
+        in.setstate(std::ios::failbit);
+        return in;
+    }
+    date.mYear  = year;
+    date.mMonth = month;
+    date.mDay   = day;
+    return in;
+}
+
 #ifndef __PROGTEST__
-int main ( void ) {
+void testIsLeap() {
+	assert(CDate::isLeap(2001) == false);
+	assert(CDate::isLeap(2004) == true);
+	assert(CDate::isLeap(2100) == false);
+	assert(CDate::isLeap(2400) == true);
+}
+void testLeapInInterval() {
+	assert(CDate::leapInInterval(1999, 2011) == 3);
+	assert(CDate::leapInInterval(2000, 2011) == 3);
+	assert(CDate::leapInInterval(2001, 2011) == 2);
+	assert(CDate::leapInInterval(2000, 2012) == 3);
+	assert(CDate::leapInInterval(2000, 2013) == 4);
+	assert(CDate::leapInInterval(2000, 2013) == 4);
+	assert(CDate::leapInInterval(2099, 2101) == 0);
+	assert(CDate::leapInInterval(2399, 2401) == 1);
+	assert(CDate::leapInInterval(1818, 6969) == 1250);
+}
+
+void testProgrest() {
+
+#ifdef ready
     ostringstream oss;
     istringstream iss;
 
@@ -251,6 +401,15 @@ int main ( void ) {
     oss.str ("");
     oss << g;
     assert ( oss.str () == "2000-01-01" );
+#endif
+}
+
+int main ( void ) {
+
+    testIsLeap();
+    testLeapInInterval();
+    testProgrest();
+    cout << "All tests PASSED!" << endl;
 
     return EXIT_SUCCESS;
 }
