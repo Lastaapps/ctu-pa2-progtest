@@ -25,15 +25,14 @@ ios_base & ( * date_format ( const char * fmt ) ) ( ios_base & x ) {
 
 class CDate {
     private:
-        const uint8_t JANUARY = 1;
         int mYear;
         int mMonth;
         int mDay;
     public:
         CDate(const int year, const int month, const int day);
+        int operator-(const CDate & date) const;
         CDate operator +(const int days) const;
         CDate operator -(const int days) const;
-        int operator-(const CDate & date) const;
         CDate operator++(int);
         CDate operator--(int);
         CDate & operator++();
@@ -50,6 +49,7 @@ class CDate {
         static const int epochStart = 1970;
         int toDays() const;
         static CDate fromDays(int days);
+        void updateWithDays(int days);
 
         static bool checkValid(const int year, const int month, const int day);
         static bool isLeap(const int year);
@@ -66,7 +66,7 @@ class CDate {
 
 CDate::CDate(int year, int month, int day)
     : mYear(year), mMonth(month), mDay(day) {
-        cout << "Constructing " << *this << endl;
+        // cout << "Constructing " << *this << endl;
         if (!checkValid(year, month, day))
             throw invalid_argument("InvalidDateException");
     }
@@ -75,6 +75,40 @@ bool CDate::checkValid(const int year, const int month, const int day) {
     if (month < 1 || 12 < month) return false;
     if (day < 1 || CDate::daysInMonth(month, isLeap(year)) < day) return false;
     return true;
+}
+
+int   CDate::operator-(const CDate & date) const {
+    return abs(toDays() - date.toDays());
+}
+CDate CDate::operator +(const int days) const {
+    return fromDays(toDays() + days);
+}
+inline CDate CDate::operator -(const int days) const {
+    return *this + -days;
+}
+CDate CDate::operator++(int) {
+    CDate backup = *this;
+    updateWithDays(toDays() + 1);
+    return backup;
+}
+CDate CDate::operator--(int) {
+    CDate backup = *this;
+    updateWithDays(toDays() - 1);
+    return backup;
+}
+CDate & CDate::operator++() {
+    updateWithDays(toDays() + 1);
+    return *this;
+}
+CDate & CDate::operator--() {
+    updateWithDays(toDays() - 1);
+    return *this;
+}
+void CDate::updateWithDays(const int days) {
+    CDate updated = fromDays(days);
+    mYear  = updated.mYear;
+    mMonth = updated.mMonth;
+    mDay   = updated.mDay;
 }
 
 int CDate::toDays() const {
@@ -268,8 +302,6 @@ void testDayConversion() {
 }
 
 void testProgrest() {
-
-#ifdef ready
     ostringstream oss;
     istringstream iss;
 
@@ -363,10 +395,15 @@ void testProgrest() {
     oss.str ("");
     oss << d;
     assert ( oss.str () == "2000-02-29" );
+}
 
+void testProgtestBonusTest() {
     //-----------------------------------------------------------------------------
     // bonus test examples
     //-----------------------------------------------------------------------------
+    ostringstream oss;
+    istringstream iss;
+
     CDate f ( 2000, 5, 12 );
     oss.str ("");
     oss << f;
@@ -490,15 +527,14 @@ void testProgrest() {
     oss.str ("");
     oss << g;
     assert ( oss.str () == "2000-01-01" );
-#endif
 }
 
 int main ( void ) {
-
     testIsLeap();
     testLeapInInterval();
     testDayConversion();
     testProgrest();
+    //testProgtestBonusTest();
     cout << "All tests PASSED!" << endl;
 
     return EXIT_SUCCESS;
