@@ -47,19 +47,28 @@ class CDate {
         friend ostream & operator << (ostream & out, const CDate & date);
         friend istream & operator >> (istream & in, CDate & date);
     private:
+        static const int epochStart = 1970;
+        int toDays() const;
+        static CDate fromDays(int days);
+
         static bool checkValid(const int year, const int month, const int day);
-        static int daysInMonth(const int month, const bool isLeap);
         static bool isLeap(const int year);
         static int leapInInterval(int start, int end);
+        static int daysInYearsInterval(int start, int end);
+        static int daysInYear(const int year, const int month);
+        static int daysInMonth(const int month, const bool isLeap);
 
         friend void testIsLeap();
         friend void testLeapInInterval();
+        friend void testDayConversion();
+        friend void testToDate(const CDate & date);
 };
 
 CDate::CDate(int year, int month, int day)
     : mYear(year), mMonth(month), mDay(day) {
+        cout << "Constructing " << *this << endl;
         if (!checkValid(year, month, day))
-            throw "InvalidDateException";
+            throw invalid_argument("InvalidDateException");
     }
 
 bool CDate::checkValid(const int year, const int month, const int day) {
@@ -67,6 +76,43 @@ bool CDate::checkValid(const int year, const int month, const int day) {
     if (day < 1 || CDate::daysInMonth(month, isLeap(year)) < day) return false;
     return true;
 }
+
+int CDate::toDays() const {
+    int days = CDate::daysInYearsInterval(epochStart, mYear);
+    days += CDate::daysInYear(mYear, mMonth);
+    days += mDay - 1;
+    return days;
+}
+CDate CDate::fromDays(int days) {
+    days++;
+    int year, month, day;
+    year = epochStart + days / 365;
+    while(true) {
+        int lower = daysInYearsInterval(epochStart, year);
+        int higher = daysInYearsInterval(epochStart, year + 1);
+        // cout << "Y " << year << " L: " << lower << " H: " << higher << endl;
+        if (higher < days) {
+            year++;
+            continue;
+        }
+        if (lower >= days) {
+            year--;
+            continue;
+        }
+        break;
+    }
+    int tempDays = daysInYearsInterval(epochStart, year);
+    month = 1;
+    for (; month < 12; month++) {
+        // cout << "D: " << daysInYear(year, month) << " T " << days << " TMP " << tempDays << endl;
+        if (tempDays + daysInYear(year, month + 1) >= days) {
+            break;
+        }
+    }
+    day = days - tempDays - daysInYear(year, month);
+    return CDate(year, month, day);
+}
+
 bool CDate::isLeap(const int year) {
     return (year % 400 == 0 || year % 100 != 0) && year % 4 == 0;
 }
@@ -75,6 +121,10 @@ int CDate::leapInInterval(int start, int end) {
 	return 0 + (end / 400 - start / 400)
 		- (end / 100 - start / 100)
 		+ (end / 4 - start / 4);
+}
+int CDate::daysInYearsInterval(int start, int end) {
+    int leap = leapInInterval(start, end);
+    return (end - start) * 365 + leap;
 }
 int CDate::daysInMonth(const int month, const bool isLeap) {
     switch (month) {
@@ -92,6 +142,23 @@ int CDate::daysInMonth(const int month, const bool isLeap) {
         case 12: return 31;
         default: throw "Unknown month";
     }
+}
+int CDate::daysInYear(const int year, const int month) {
+    int days = 0;
+	switch (month - 1) {
+		case 11: days += 30;
+		case 10: days += 31;
+		case 9: days += 30;
+		case 8: days += 31;
+		case 7: days += 31;
+		case 6: days += 30;
+		case 5: days += 31;
+		case 4: days += 30;
+		case 3: days += 31;
+		case 2: days += isLeap(year) ? 29 : 28;
+		case 1: days += 31;
+	}
+    return days;
 }
 
 bool CDate::operator < (const CDate & date) const {
@@ -131,7 +198,7 @@ ostream & operator << (ostream & out, const CDate & date) {
     return out
         << setw(4) << setfill('0') << date.mYear << '-'
         << setw(2) << setfill('0') << date.mMonth << '-'
-        << setw(2) << setfill('0') << date.mDay << endl;
+        << setw(2) << setfill('0') << date.mDay;
 }
 istream & operator >> (istream & in, CDate & date) {
     int year, month, day;
@@ -176,6 +243,28 @@ void testLeapInInterval() {
 	assert(CDate::leapInInterval(2099, 2101) == 0);
 	assert(CDate::leapInInterval(2399, 2401) == 1);
 	assert(CDate::leapInInterval(1818, 6969) == 1250);
+}
+inline void testToDate(const CDate & date) {
+    assert(date == CDate::fromDays(date.toDays()));
+}
+
+void testDayConversion() {
+    const CDate epoch(CDate::epochStart, 1, 1);
+    const CDate epochEnd(CDate::epochStart, 1, 31);
+    const CDate epochStart(CDate::epochStart, 2, 1);
+    assert(epoch.toDays() == 0);
+    assert(epoch == CDate::fromDays(epoch.toDays()));
+    assert(epochStart == CDate::fromDays(epochStart.toDays()));
+    assert(epochEnd == CDate::fromDays(epochEnd.toDays()));
+
+    const CDate today(2022, 3, 21);
+    assert(today.toDays() == 19072);
+    testToDate(today);
+    testToDate(CDate(2020,  2, 29));
+    testToDate(CDate(2019,  2, 28));
+    testToDate(CDate(2020, 12, 31));
+    testToDate(CDate(2020,  1,  1));
+    testToDate(CDate(2020,  3,  1));
 }
 
 void testProgrest() {
@@ -408,6 +497,7 @@ int main ( void ) {
 
     testIsLeap();
     testLeapInInterval();
+    testDayConversion();
     testProgrest();
     cout << "All tests PASSED!" << endl;
 
