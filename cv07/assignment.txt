@@ -1,0 +1,23 @@
+Díky reimplementaci e-Roušky se situace se šířením epidemie trochu zlepšila, ale do jejího zvládnutí je to ještě velký kus cesty. Proto je nyní potřeba tuto implementaci rozšířit, aby bylo možné provádět různé simulace, předpovídat tak budoucí vývoj a snažit se na tento vývoj s předstihem reagovat dalšími a dalšími opatřeními. A protože osvědčení architekti státních informačních systémů jsou stále zaneprázdněni přípravami na převzetí zasloužených státních vyznamenání, leží odpovědnost za tento projekt opět na vás.
+
+Vaším úkolem je realizovat 3 třídy. Jejich rozhraní budete muset navrhnout sami, navíc budete muset rozhraní přizpůsobit předpokládanému použití (viz přiložený archiv). Požadované třídy jsou:
+
+CTimeStamp, tato třída bude realizovat jednoduché zapouzdření časového razítka. Musí mít konstruktor, ve kterém bude inicializovat své složky (rok, měsíc, den, hodina, minuta, sekunda). Můžete se spolehnout, že jsou zadávané pouze platné hodnoty data a času.
+CContact je třída, která zapouzdřuje jeden kontakt mezi dvojicí uživatelů. Uživatelé jsou identifikováni svým telefonním číslem, okamžik kontaktu je zaznamenán v podobě časového razítka CTimeStamp.
+CEFaceMask je podrobněji popsána níže.
+Implementaci prvních dvou tříd můžete převzít ze svého řešení předchozí procvičovací úlohy.
+
+Poslední vyžadovaná třída, CEFaceMask, musí implementovat následující metody:
+
+addContact přidá do databáze záznam o setkání dvou jedinců v zadaný čas.
+getSuperSpreaders dostane jako parametr časový interval a vrací, který ze sledovaných jedinců mohl nakazit v tomto intervalu nejvíce dalších lidí (počítá se pouze přímý kontakt). Takových jedinců může být i více, proto vraťte seznam jejich telefonních čísel. Pokud k žádnému kontaktu v intervalu nedošlo, vracejte prázdný seznam.
+Pro potřeby této úlohy reprezentujte telefonní čísla jako celá čísla (v praxi by to nebyl dobrý nápad, počáteční nuly jsou u telefonních čísel podstatné).
+
+Návratová hodnota metody getSuperSpreaders reprezentuje seznam telefonních čísel. Seznam musí obsahovat pouze unikátní čísla a musí být seřazen vzestupně.
+
+Konečně, z principu plnění databáze se občas stane, že se nedopatřením vygeneruje kontakt sám se sebou. Takový kontakt ignorujte.
+
+Poznámky:
+V přiloženém archivu naleznete ukázkové běhy programu a testovací vstupy.
+Zaměřte se na čistý návrh tříd. Určitě nechcete udělat všechny členské proměnné s veřejným přístupem. Využijte cvičení ke konzultaci Vašeho návrhu.
+Interval from a to je uzavřený, tedy včetně těchto hodnot.
