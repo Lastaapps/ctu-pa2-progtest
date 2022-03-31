@@ -34,7 +34,9 @@ class CTimeStamp {
             mHour(hour), mMinute(minute), mSecond(second) {}
 
         bool isBefore( const CTimeStamp & time) const {
-            if (mYear   < time.mYear  ) return true; if (mYear   > time.mYear  ) return false; if (mMonth  < time.mMonth ) return true;
+            if (mYear   < time.mYear  ) return true;
+            if (mYear   > time.mYear  ) return false;
+            if (mMonth  < time.mMonth ) return true;
             if (mMonth  > time.mMonth ) return false;
             if (mDay    < time.mDay   ) return true;
             if (mDay    > time.mDay   ) return false;
@@ -59,17 +61,6 @@ class CContact {
         explicit CContact(const CTimeStamp time, const int number1, const int number2)
             : mTime(time), mNumber1(number1), mNumber2(number2) {}
 
-        bool hasNumber(const int number, int & other) const {
-            if (mNumber1 == number) {
-                other = mNumber2;
-                return true;
-            }
-            if (mNumber2 == number) {
-                other = mNumber1;
-                return true;
-            }
-            return false;
-        }
         bool hasSameNubers() const {
             return mNumber1 == mNumber2;
         }
@@ -80,15 +71,52 @@ class CContact {
             mTime.print();
             cout << "[" << mNumber1 << " <-> " << mNumber2 << "]";
         }
+        friend class CEFaceMask;
 };
 class CEFaceMask {
     private:
         vector<CContact> contacts;
     public:
         CEFaceMask & addContact(CContact contact) {
-            if (contact.hasSameNubers()) return *this;
-            contacts.push_back(contact);
+            // filter contacts with self
+            if (!contact.hasSameNubers())
+                contacts.push_back(contact);
             return *this;
+        }
+
+        vector<int> getSuperSpreaders(const CTimeStamp & from, const CTimeStamp & to) const {
+            // create map with occurance of each number in pairs
+            map<int, int> map;
+            for (const auto & c : contacts) {
+                // filter by date
+                if ( from.isBefore(c.getTime()) && c.getTime().isBefore(to)) {
+                    // add to map
+                    map.emplace(c.mNumber1, 0).first -> second ++;
+                    map.emplace(c.mNumber2, 0).first -> second ++;
+                }
+            }
+            vector<pair<int, int>> pairs;
+            vector<int> result;
+            if (map.empty()) return result;
+
+            // move map entries into a vector
+            for(auto const& [key, value] : map)
+                pairs.push_back({key, value});
+
+            // sort by contacts
+            sort(pairs.begin(), pairs.end(),
+                    [](const pair<int, int> p1, const pair<int, int> p2){
+                    return p1.second > p2.second;
+                    });
+            // sorted, must be the biggest occurance found
+            int biggest = pairs.begin() -> second;
+            for (auto const& a : pairs) {
+                // when orrucance differs e.g. is lower, stop the loop
+                if (a.second != biggest) break;
+                result.push_back(a.first);
+            }
+            sort(result.begin(), result.end());
+            return result;
         }
 
         void print() const {
@@ -97,84 +125,49 @@ class CEFaceMask {
                 cout << endl;
             }
         }
-
-        struct ContactOrder {
-            size_t order;
-            int number;
-        };
-        vector<int> listContacts(const int number) const {
-            vector<ContactOrder> list;
-            size_t order = 0;
-            int numb;
-            for (const auto & c : contacts) {
-                if (c.hasNumber(number, numb)) {
-                    list.push_back({order++, numb});
-                }
-            }
-            return filterAndSort(list);
-        }
-
-        vector<int> listContacts(const int number, const CTimeStamp from, const CTimeStamp to) const {
-            vector<ContactOrder> list;
-            size_t order = 0;
-            int numb;
-            for (const auto & c : contacts) {
-                if (c.hasNumber(number, numb)
-                        && from.isBefore(c.getTime())
-                        && c.getTime().isBefore(to)
-                   ) {
-                    list.push_back({order++, numb});
-                }
-            }
-            return filterAndSort(list);
-        }
-
-        static bool compareNumbers(const ContactOrder & o1, const ContactOrder & o2) {
-            return o1.number < o2.number;
-        }
-        static bool compareOrders(const ContactOrder & o1, const ContactOrder & o2) {
-            return o1.order < o2.order;
-        }
-        vector<int> filterAndSort(vector<ContactOrder> & list) const {
-            if (list.size() == 0) {
-                vector<int> empty;
-                return empty;
-            }
-
-            sort(list.begin(), list.end(), compareNumbers);
-
-            vector<ContactOrder> unique;
-            ContactOrder & latest = list.at(0);
-            unique.push_back(latest);
-            for (const auto & c : list) {
-                if (c.number != latest.number) {
-                    unique.push_back(c);
-                    latest = c;
-                }
-            }
-
-            vector<int> toReturn;
-            sort(unique.begin(), unique.end(), compareOrders);
-            for (const auto & c : unique) {
-                toReturn.push_back(c.number);
-            }
-            return toReturn;
-        }
 };
 
 #ifndef __PROGTEST__
-int main ()
-{
-  CEFaceMask test;
 
-  test . addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 111111111, 222222222 ) );
-  test . addContact ( CContact ( CTimeStamp ( 2021, 1, 12, 12, 40, 10 ), 333333333, 222222222 ) )
-       . addContact ( CContact ( CTimeStamp ( 2021, 2, 14, 15, 30, 28 ), 222222222, 444444444 ) );
-  test . addContact ( CContact ( CTimeStamp ( 2021, 2, 15, 18, 0, 0 ), 555555555, 444444444 ) );
-  assert ( test . getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (vector<int> {222222222}) );
-  test . addContact ( CContact ( CTimeStamp ( 2021, 3, 20, 18, 0, 0 ), 444444444, 666666666 ) );
-  test . addContact ( CContact ( CTimeStamp ( 2021, 3, 25, 0, 0, 0 ), 111111111, 666666666 ) );
-  assert ( test . getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (vector<int> {222222222, 444444444}) );
-  return 0;
+void test1() {
+    CEFaceMask test;
+    test.addContact ( CContact ( CTimeStamp ( 2020, 1, 10, 12, 40, 10 ), 8, 9 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2022, 1, 10, 12, 40, 10 ), 8, 9 ) );
+    assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == vector<int> {});
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 1, 2 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 5, 6 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 3, 4 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 7, 8 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 6, 7 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 4, 5 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 2, 3 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 8, 9 ) );
+    assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (
+                vector<int> { 2, 3, 4, 5, 6, 7, 8 }) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 3, 4 ) );
+    assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (
+                vector<int> { 3, 4 }) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 1, 2 ) );
+    assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (
+                vector<int> { 2, 3, 4 }) );
+}
+
+int main () {
+
+    test1();
+
+    CEFaceMask test;
+
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 111111111, 222222222 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 12, 12, 40, 10 ), 333333333, 222222222 ) )
+        .addContact ( CContact ( CTimeStamp ( 2021, 2, 14, 15, 30, 28 ), 222222222, 444444444 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 2, 15, 18, 0, 0 ), 555555555, 444444444 ) );
+    assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (vector<int> {222222222}) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 3, 20, 18, 0, 0 ), 444444444, 666666666 ) );
+    test.addContact ( CContact ( CTimeStamp ( 2021, 3, 25, 0, 0, 0 ), 111111111, 666666666 ) );
+    assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (vector<int> {222222222, 444444444}) );
+
+    cout << "All tests passed!" << endl;
+    return 0;
 }
 #endif /* __PROGTEST__ */
