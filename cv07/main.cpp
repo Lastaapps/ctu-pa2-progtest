@@ -67,6 +67,9 @@ class CContact {
         const CTimeStamp & getTime() const {
             return mTime;
         }
+        pair<int, int> toPair() const {
+            return pair<int, int>(mNumber1, mNumber2);
+        }
         void print() const {
             mTime.print();
             cout << "[" << mNumber1 << " <-> " << mNumber2 << "]";
@@ -86,14 +89,23 @@ class CEFaceMask {
 
         vector<int> getSuperSpreaders(const CTimeStamp & from, const CTimeStamp & to) const {
             // create map with occurance of each number in pairs
-            map<int, int> map;
+            set<pair<int, int>> filter;
             for (const auto & c : contacts) {
                 // filter by date
                 if ( from.isBefore(c.getTime()) && c.getTime().isBefore(to)) {
-                    // add to map
-                    map.emplace(c.mNumber1, 0).first -> second ++;
-                    map.emplace(c.mNumber2, 0).first -> second ++;
+                    pair<int, int> data = c.toPair();
+                    pair<int, int> reversed = {data.second, data.first};
+                    if (filter.find(data) == filter.end() && filter.find(reversed) == filter.end()) {
+                        filter.emplace(data);
+                    }
                 }
+            }
+
+            map<int, int> map;
+            for (const auto & [c1, c2] : filter) {
+                    // add to map
+                    map.emplace(c1, 0).first -> second ++;
+                    map.emplace(c2, 0).first -> second ++;
             }
             vector<pair<int, int>> pairs;
             vector<int> result;
@@ -131,25 +143,28 @@ class CEFaceMask {
 
 void test1() {
     CEFaceMask test;
+    CTimeStamp from = CTimeStamp ( 2021, 1, 1, 0, 0, 0 );
+    CTimeStamp to = CTimeStamp ( 2022, 1, 1, 0, 0, 0 );
+    CTimeStamp add = CTimeStamp ( 2021, 1, 5, 0, 0, 0 );
     test.addContact ( CContact ( CTimeStamp ( 2020, 1, 10, 12, 40, 10 ), 8, 9 ) );
     test.addContact ( CContact ( CTimeStamp ( 2022, 1, 10, 12, 40, 10 ), 8, 9 ) );
     assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == vector<int> {});
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 1, 2 ) );
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 5, 6 ) );
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 3, 4 ) );
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 7, 8 ) );
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 6, 7 ) );
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 4, 5 ) );
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 2, 3 ) );
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 8, 9 ) );
-    assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (
-                vector<int> { 2, 3, 4, 5, 6, 7, 8 }) );
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 3, 4 ) );
-    assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (
-                vector<int> { 3, 4 }) );
-    test.addContact ( CContact ( CTimeStamp ( 2021, 1, 10, 12, 40, 10 ), 1, 2 ) );
-    assert( test.getSuperSpreaders ( CTimeStamp ( 2021, 1, 1, 0, 0, 0 ), CTimeStamp ( 2022, 1, 1, 0, 0, 0 ) ) == (
-                vector<int> { 2, 3, 4 }) );
+    test.addContact ( CContact ( add, 1, 2 ) );
+    test.addContact ( CContact ( add, 5, 6 ) );
+    test.addContact ( CContact ( add, 3, 4 ) );
+    test.addContact ( CContact ( add, 7, 8 ) );
+    test.addContact ( CContact ( add, 6, 7 ) );
+    test.addContact ( CContact ( add, 4, 5 ) );
+    test.addContact ( CContact ( add, 2, 3 ) );
+    test.addContact ( CContact ( add, 8, 9 ) );
+    assert( test.getSuperSpreaders (from, to) == (vector<int> { 2, 3, 4, 5, 6, 7, 8 }) );
+    test.addContact ( CContact (add, 3, 5 ) );
+    assert( test.getSuperSpreaders (from, to) == (vector<int> { 3, 5 }));
+    test.addContact ( CContact ( add, 1, 6 ) );
+    assert( test.getSuperSpreaders (from, to) == (vector<int> { 3, 5, 6 }));
+    // vector<int> vec = test.getSuperSpreaders (from, to);
+    // for (auto a : vec) cout << a << ", ";
+    // cout << endl;
 }
 
 int main () {
