@@ -105,36 +105,55 @@ class Vector {
             mArray[mLen++] = item;
             return *this;
         }
-    private:
-        void checkSizeBeforeInsert() {
-            if (mLen >= mCap) {
-                mCap = mCap * 3 / 2 + 42;
-                T * newArray = new T[mCap];
-                for (size_t i = 0; i < mLen; i++)
-                    newArray[i] = move(mArray[i]);
-                delete [] mArray;
-                mArray = newArray;
-            }
-        }
-    public:
         Vector & dropFrom(size_t index) {
              mLen = index;
              return *this;
         }
         T & get(const size_t index) {
+            workAferEnd(index);
             return mArray[index];
         }
         const T & get(const size_t index) const {
+            workAferEnd(index);
             return mArray[index];
         }
         T & operator[](const size_t index) {
+            workAferEnd(index);
             return mArray[index];
         }
         const T & operator[](const size_t index) const {
+            workAferEnd(index);
             return mArray[index];
+        }
+        void prepare(const size_t newCapacity) {
+            if (newCapacity <= mCap) return;
+            mCap = newCapacity;
+            applyNewCapacity();
         }
         size_t size() const { return mLen; }
         size_t isEmpty() const { return mLen == 0; }
+    private:
+        void checkSizeBeforeInsert() {
+            if (mLen >= mCap) {
+                do {
+                    mCap = mCap * 3 / 2 + 42;
+                } while(mLen >= mCap);
+                applyNewCapacity();
+            }
+        }
+        void applyNewCapacity() {
+            T * newArray = new T[mCap];
+            for (size_t i = 0; i < mLen; i++)
+                newArray[i] = move(mArray[i]);
+            delete [] mArray;
+            mArray = newArray;
+        }
+        void workAferEnd(const size_t index) {
+            if (index >= mLen) {
+                mLen = index + 1;
+                checkSizeBeforeInsert();
+            }
+        }
 };
 
 typedef Vector<uint8_t> Buffer;
