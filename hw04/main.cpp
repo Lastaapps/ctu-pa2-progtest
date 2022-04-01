@@ -9,7 +9,7 @@ using namespace std;
 #endif /* __PROGTEST__ */
 
 template<class T>
-class SPointer {
+class SPtr {
     private:
         class Counter {
             public:
@@ -17,40 +17,31 @@ class SPointer {
         };
         T * mPtr;
         Counter * mCnt;
-        SPointer(T * ptr) : mPtr(ptr), mCnt(new Counter) {
+    public:
+        SPtr(T * ptr) : mPtr(ptr), mCnt(new Counter) {
             mCnt -> counter ++;
         }
-        SPointer(const SPointer & src) {
+        SPtr(const SPtr & src) {
             mPtr = src.mPtr;
             mCnt = src.mCnt;
             mCnt -> counter ++;
         }
-        SPointer(SPointer && src) {
+        SPtr(SPtr && src) {
             mPtr = src.mPtr;
             mCnt = src.mCnt;
             src.mCnt = nullptr;
             src.mPtr = nullptr;
         }
-        SPointer & operator = (SPointer src) {
-            swap(mPtr, src.mPtr);
-            swap(mCnt, src.mCnt);
-            /*{
-                T * tmp = mPtr;
-                mPtr = src.mPtr;
-                src.mPtr = tmp;
-            } {
-                Counter * tmp = mCnt;
-                mCnt = src.mCnt;
-                src.mCnt = tmp;
-            }*/
-
+        SPtr & operator = (SPtr src) {
+            std::swap(mPtr, src.mPtr);
+            std::swap(mCnt, src.mCnt);
         }
         T & operator *  () const { return *mPtr; }
         T * operator -> () const { return mPtr; }
-        bool operator == (const SPointer & other) const {
+        bool operator == (const SPtr & other) const {
             return mPtr == other.mPtr;
         }
-        bool operator != (const SPointer & other) const {
+        bool operator != (const SPtr & other) const {
             return !(mPtr == other);
         }
         bool operator == (T * other) const {
@@ -59,7 +50,8 @@ class SPointer {
         bool operator != (T * other) const {
             return !(mPtr == other);
         }
-        ~SPointer() {
+        bool hasOne() const { return mCnt -> counter == 1; }
+        ~SPtr() {
             mCnt -> counter --;
             if (mCnt -> counter == 0) {
                 delete mCnt;
@@ -70,7 +62,98 @@ class SPointer {
         }
 };
 
+template<class T>
+class Vector {
+    private:
+        T * mArray = nullptr;
+        size_t mLen = 0, mCap = 0;
+    public:
+        Vector() {}
+        Vector(const Vector & other) {
+            mArray = new T[other.mLen];
+            mLen = other.mLen;
+            mCap = other.mLen;
+            for (size_t i = 0; i < other.mLen; i++)
+                mArray[i] = other.mArray[i];
+        }
+        Vector(Vector && other) {
+            delete mArray;
+            mArray = other.mArray;
+            mLen = other.mLen;
+            mCap = other.mCap;
+            other.mArray = nullptr;
+            other.mLen = 0;
+            other.mCap = 0;
+        }
+        Vector & operator = (Vector other) {
+            std::swap(mArray, other.mArray);
+            std::swap(mCap,   other.mCap);
+            std::swap(mLen,   other.mLen);
+        }
+        ~Vector() {
+            delete mArray;
+            mLen = 0;
+            mCap = 0;
+        }
+        Vector & add(const T & item) {
+            checkSizeBeforeInsert();
+            mArray[mLen++] = item;
+            return *this;
+        }
+        Vector & add(T && item) {
+            checkSizeBeforeInsert();
+            mArray[mLen++] = item;
+            return *this;
+        }
+    private:
+        void checkSizeBeforeInsert() {
+            if (mLen >= mCap) {
+                mCap = mCap * 3 / 2 + 42;
+                T * newArray = new T[mCap];
+                for (size_t i = 0; i < mLen; i++)
+                    newArray[i] = move(mArray[i]);
+                delete [] mArray;
+                mArray = newArray;
+            }
+        }
+    public:
+        Vector & dropFrom(size_t index) {
+             mLen = index;
+             return *this;
+        }
+        T & get(const size_t index) {
+            return mArray[index];
+        }
+        const T & get(const size_t index) const {
+            return mArray[index];
+        }
+        T & operator[](const size_t index) {
+            return mArray[index];
+        }
+        const T & operator[](const size_t index) const {
+            return mArray[index];
+        }
+        size_t size() const { return mLen; }
+        size_t isEmpty() const { return mLen == 0; }
+};
+
+typedef Vector<uint8_t> Buffer;
+
+class Version {
+    class Change {
+        size_t mIndex;
+        Buffer mBuffer;
+    };
+    size_t mPos;
+    size_t mLen;
+    Vector<Change> mChanges;
+};
+
 class CFile {
+    Vector<SPtr<Version>> versions;
+    SPtr<Buffer> cur, latest = nullptr;
+    size_t mPos;
+
     public:
         CFile(void);
         // copy cons, dtor, op=
