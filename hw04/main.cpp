@@ -8,6 +8,68 @@
 using namespace std;
 #endif /* __PROGTEST__ */
 
+template<class T>
+class SPointer {
+    private:
+        class Counter {
+            public:
+                size_t counter = 0;
+        };
+        T * mPtr;
+        Counter * mCnt;
+        SPointer(T * ptr) : mPtr(ptr), mCnt(new Counter) {
+            mCnt -> counter ++;
+        }
+        SPointer(const SPointer & src) {
+            mPtr = src.mPtr;
+            mCnt = src.mCnt;
+            mCnt -> counter ++;
+        }
+        SPointer(SPointer && src) {
+            mPtr = src.mPtr;
+            mCnt = src.mCnt;
+            src.mCnt = nullptr;
+            src.mPtr = nullptr;
+        }
+        SPointer & operator = (SPointer src) {
+            swap(mPtr, src.mPtr);
+            swap(mCnt, src.mCnt);
+            /*{
+                T * tmp = mPtr;
+                mPtr = src.mPtr;
+                src.mPtr = tmp;
+            } {
+                Counter * tmp = mCnt;
+                mCnt = src.mCnt;
+                src.mCnt = tmp;
+            }*/
+
+        }
+        T & operator *  () const { return *mPtr; }
+        T * operator -> () const { return mPtr; }
+        bool operator == (const SPointer & other) const {
+            return mPtr == other.mPtr;
+        }
+        bool operator != (const SPointer & other) const {
+            return !(mPtr == other);
+        }
+        bool operator == (T * other) const {
+            return mPtr == other;
+        }
+        bool operator != (T * other) const {
+            return !(mPtr == other);
+        }
+        ~SPointer() {
+            mCnt -> counter --;
+            if (mCnt -> counter == 0) {
+                delete mCnt;
+                delete mPtr;
+            }
+            mCnt = nullptr;
+            mPtr = nullptr;
+        }
+};
+
 class CFile {
     public:
         CFile(void);
@@ -24,6 +86,7 @@ class CFile {
 };
 
 #ifndef __PROGTEST__
+#ifdef blbina
 bool writeTest(CFile & x, const initializer_list<uint8_t> & data, uint32_t wrLen) {
     return x.write(data.begin (), data.size ()) == wrLen;
 }
@@ -39,8 +102,10 @@ bool readTest(CFile & x, const initializer_list<uint8_t> & data, uint32_t rdLen)
             return false;
     return true;
 }
+#endif
 
 int main(void) {
+#ifdef blbina
     CFile f0;
 
     assert( writeTest(f0, { 10, 20, 30 }, 3));
@@ -76,6 +141,7 @@ int main(void) {
     assert( f1.undoVersion ());
     assert( readTest(f1, { 4, 70, 80 }, 20));
     assert( !f1.undoVersion ());
+#endif
 
     cout << "All tests padded!" << endl;
     return EXIT_SUCCESS;
