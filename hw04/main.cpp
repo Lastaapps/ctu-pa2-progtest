@@ -8,7 +8,7 @@
 using namespace std;
 #endif /* __PROGTEST__ */
 
-template<class T>
+template<typename T>
 class SPtr {
     private:
         class Counter {
@@ -18,6 +18,7 @@ class SPtr {
         T * mPtr;
         Counter * mCnt;
     public:
+        SPtr() : mPtr(nullptr), mCnt(new Counter) {}
         SPtr(T * ptr) : mPtr(ptr), mCnt(new Counter) {
             mCnt -> counter ++;
         }
@@ -35,6 +36,7 @@ class SPtr {
         SPtr & operator = (SPtr src) {
             std::swap(mPtr, src.mPtr);
             std::swap(mCnt, src.mCnt);
+            return *this;
         }
         T & operator *  () const { return *mPtr; }
         T * operator -> () const { return mPtr; }
@@ -62,7 +64,7 @@ class SPtr {
         }
 };
 
-template<class T>
+template<typename T>
 class Vector {
     private:
         T * mArray = nullptr;
@@ -77,7 +79,7 @@ class Vector {
                 mArray[i] = other.mArray[i];
         }
         Vector(Vector && other) {
-            delete mArray;
+            delete [] mArray;
             mArray = other.mArray;
             mLen = other.mLen;
             mCap = other.mCap;
@@ -89,25 +91,26 @@ class Vector {
             std::swap(mArray, other.mArray);
             std::swap(mCap,   other.mCap);
             std::swap(mLen,   other.mLen);
+            return *this;
         }
         ~Vector() {
-            delete mArray;
+            delete [] mArray;
             mLen = 0;
             mCap = 0;
         }
         Vector & add(const T & item) {
-            checkSizeBeforeInsert();
+            expandToLen(mLen);
             mArray[mLen++] = item;
             return *this;
         }
         Vector & add(T && item) {
-            checkSizeBeforeInsert();
+            expandToLen(mLen);
             mArray[mLen++] = item;
             return *this;
         }
         Vector & dropFrom(size_t index) {
-             mLen = index;
-             return *this;
+            mLen = index;
+            return *this;
         }
         T & get(const size_t index) {
             workAferEnd(index);
@@ -130,14 +133,19 @@ class Vector {
             mCap = newCapacity;
             applyNewCapacity();
         }
-        size_t size() const { return mLen; }
-        size_t isEmpty() const { return mLen == 0; }
+        void clear() {
+            delete mArray;
+            mLen = 0;
+            mCap = 0;
+        }
+        inline size_t size() const { return mLen; }
+        inline size_t isEmpty() const { return mLen == 0; }
     private:
-        void checkSizeBeforeInsert() {
-            if (mLen >= mCap) {
+        void expandToLen(size_t len) {
+            if (len >= mCap) {
                 do {
                     mCap = mCap * 3 / 2 + 42;
-                } while(mLen >= mCap);
+                } while(len >= mCap);
                 applyNewCapacity();
             }
         }
@@ -150,8 +158,8 @@ class Vector {
         }
         void workAferEnd(const size_t index) {
             if (index >= mLen) {
+                expandToLen(index + 1);
                 mLen = index + 1;
-                checkSizeBeforeInsert();
             }
         }
 };
@@ -169,26 +177,82 @@ class Version {
 };
 
 class CFile {
-    Vector<SPtr<Version>> versions;
-    SPtr<Buffer> cur, latest = nullptr;
-    size_t mPos;
+    Vector<SPtr<Version>> mVersions;
+    SPtr<Buffer> mCur = new Buffer, mLatest = nullptr;
+    size_t mPos = 0;
 
     public:
-        CFile(void);
-        // copy cons, dtor, op=
-        bool seek(uint32_t offset);
-        uint32_t read(uint8_t * dst, uint32_t bytes);
-        uint32_t write(const uint8_t * src, uint32_t bytes);
-        void truncate(void);
-        uint32_t fileSize(void) const;
-        void addVersion(void);
-        bool undoVersion(void);
+    CFile(void) {}
+    CFile(const CFile & other) {
+        mPos = other.mPos;
+        mVersions = other.mVersions;
+        mCur = other.mCur;
+        mLatest = other.mLatest;
+    }
+    CFile(CFile && other) {
+        mPos = other.mPos;
+        mVersions = other.mVersions;
+        mCur = other.mCur;
+        mLatest = other.mLatest;
+        other.mPos = 0;
+        other.mVersions.clear();
+        other.mCur    = nullptr;
+        other.mLatest = nullptr;
+    }
+    CFile & operator = (CFile other) {
+        swap(mPos, other.mPos);
+        swap(mVersions, other.mVersions);
+        swap(mCur, other.mCur);
+        swap(mLatest, other.mLatest);
+        return *this;
+    }
+    ~CFile() {}
+
+    bool seek(uint32_t offset) {
+        if (offset > mCur -> size()) return false;
+        mPos = offset;
+        return true;
+    }
+    uint32_t read(uint8_t * dst, uint32_t bytes) {
+        // cout << "Size: " << mCur -> size() << " x Pos: " << mPos + bytes << endl;
+        if (mCur -> isEmpty()) return 0;
+        size_t maxBound = min(mCur -> size(), mPos + bytes);
+        size_t read = 0;
+        for (; mPos < maxBound; mPos++, read++)
+            dst[read] = (*mCur)[mPos];
+        return read;
+    }
+    uint32_t write(const uint8_t * src, uint32_t bytes) {
+        checkWrite();
+        size_t end = mPos + bytes;
+        for (size_t read = 0; mPos < end; mPos++, read++) {
+            (*mCur)[mPos] = src[read];
+        }
+        return bytes;
+    }
+    void truncate(void) {
+        checkWrite();
+        mCur -> dropFrom(mPos);
+    }
+    uint32_t fileSize(void) const { return mCur -> size(); };
+    void addVersion(void);
+    bool undoVersion(void);
+    void printBuffer(ostream & out) const {
+        out << "Buf: Len: " << mCur -> size() << " Data: ";
+        for (size_t i = 0; i < mCur -> size(); i++)
+            out << (uint32_t)(*mCur)[i] << ", ";
+        out << endl;
+    }
     private:
-        // todo
+    void checkWrite() {
+        if (mCur.hasOne()) return;
+        Buffer * copy = new Buffer;
+        *copy = *mCur;
+        mCur = SPtr(copy);
+    }
 };
 
 #ifndef __PROGTEST__
-#ifdef blbina
 bool writeTest(CFile & x, const initializer_list<uint8_t> & data, uint32_t wrLen) {
     return x.write(data.begin (), data.size ()) == wrLen;
 }
@@ -197,17 +261,28 @@ bool readTest(CFile & x, const initializer_list<uint8_t> & data, uint32_t rdLen)
     uint8_t tmp[100];
     uint32_t idx = 0;
 
-    if(x.read(tmp, rdLen) != data.size ())
+    uint32_t len = x.read(tmp, rdLen);
+    if(len != data.size ()) {
+        cout << "Len mismatch: Ref(" << data.size() << ") x Me(" << len << ")" << endl;
         return false;
+    }
     for(auto v : data)
-        if(tmp[idx++] != v)
+        if(tmp[idx++] != v) {
+            cout << "Data mismatch" << endl << "Ref: ";
+            for (auto byte : data)
+                cout << (uint32_t)byte << ", ";
+            cout << endl << "Me:  ";
+            for (size_t i = 0; i < len; i++) {
+                auto byte = tmp[i];
+                cout << (uint32_t)byte << ", ";
+            }
+            cout << endl;
             return false;
+        }
     return true;
 }
-#endif
 
 int main(void) {
-#ifdef blbina
     CFile f0;
 
     assert( writeTest(f0, { 10, 20, 30 }, 3));
@@ -220,6 +295,7 @@ int main(void) {
     assert( f0.seek(1));
     assert( readTest(f0, { 20, 5, 4, 70, 80 }, 7));
     assert( f0.seek(3));
+#ifdef blbina
     f0.addVersion();
     assert( f0.seek(6));
     assert( writeTest(f0, { 100, 101, 102, 103 }, 4));
