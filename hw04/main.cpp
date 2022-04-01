@@ -5,40 +5,49 @@
 #include <cstdio>
 #include <cstdint>
 #include <iostream>
-#include <iomanip>
 using namespace std;
 #endif /* __PROGTEST__ */
 
+/**
+ * Represents a shared pointer
+ * shares resources among many destinations
+ * uses counting references internally
+ * no arrays suppored as type T!
+ */
 template<typename T>
 class SPtr {
     private:
+        /**
+         * Used for reference counting
+         * shared among more shared pointers
+         */
         class Counter {
             public:
                 size_t counter = 0;
         };
+        // data stored
         T * mPtr;
+        // common counter
         Counter * mCnt;
     public:
-        SPtr() : mPtr(nullptr), mCnt(new Counter) {
-            mCnt -> counter ++;
-        }
-        SPtr(T * ptr) : mPtr(ptr), mCnt(new Counter) {
-            mCnt -> counter ++;
-            // cout << "Making ptr new  " << typeid(T).name() << endl;
-        }
+        /** Constructs an empty shared pointer*/
+        SPtr() : mPtr(nullptr), mCnt(new Counter) { mCnt -> counter ++; }
+        /** Constructs a normal pointer holding shared pointer
+         * pointer gets delete after no shared points at it */
+        SPtr(T * ptr) : mPtr(ptr), mCnt(new Counter) { mCnt -> counter ++; }
+        /** Copies internal data, increases reefrence counter */
         SPtr(const SPtr & src) {
             mPtr = src.mPtr;
             mCnt = src.mCnt;
             mCnt -> counter ++;
-            // cout << "Making ptr copy " << typeid(T).name() << endl;
         }
+        /** Moves internal data, increases reefrence counter */
         SPtr(SPtr && src) {
             if (&src == this) return;
             mPtr = src.mPtr;
             mCnt = src.mCnt;
             src.mCnt = nullptr;
             src.mPtr = nullptr;
-            // cout << "Making ptr move " << typeid(T).name() << endl;
         }
         SPtr & operator = (SPtr src) {
             std::swap(mPtr, src.mPtr);
@@ -59,7 +68,14 @@ class SPtr {
         bool operator != (T * other) const {
             return !(mPtr == other);
         }
+        /**
+         * @return if this shared counter is shared among 1 owner only
+         */
         bool hasOne() const { return mCnt -> counter == 1; }
+        /**
+         * Deletes holded data in a shared pointer if there
+         * is no other reference to it
+         */
         ~SPtr() {
             mCnt -> counter --;
             if (mCnt -> counter == 0) {
@@ -71,13 +87,19 @@ class SPtr {
         }
 };
 
+/**
+ * Replacement for basic std::vector<T>,
+ * but with normal API (only necesarry API parts implemented)
+ */
 template<typename T>
 class Vector {
     private:
         T * mArray = nullptr;
         size_t mLen = 0, mCap = 0;
     public:
+        /* Creates an empry vector */
         Vector() {}
+        /* Copies data from another vector using = operator */
         Vector(const Vector & other) {
             mArray = new T [other.mLen];
             mLen = other.mLen;
@@ -85,6 +107,7 @@ class Vector {
             for (size_t i = 0; i < other.mLen; i++)
                 mArray[i] = other.mArray[i];
         }
+        /* Moves data from another vector */
         Vector(Vector && other) {
             if (&other == this) return;
             delete [] mArray;
@@ -101,62 +124,102 @@ class Vector {
             std::swap(mLen,   other.mLen);
             return *this;
         }
+        /** Clear all the internal data */
         ~Vector() {
             delete [] mArray;
+            mArray = nullptr;
             mLen = 0;
             mCap = 0;
         }
+        /** Adds an item to a vector using copy = operator
+         * @param item item to copy and add
+         * @return this vector
+         */
         Vector & add(const T & item) {
             expandToLen(mLen);
             mArray[mLen++] = item;
             return *this;
         }
+        /** Moves and adds an item to a vector using move = operator
+         * @param item item to move
+         * @return this vector
+         */
         Vector & add(T && item) {
             expandToLen(mLen);
             mArray[mLen++] = item;
             return *this;
         }
+        /**
+         * Invalides/deletes data from index given
+         * @param index index to delete items from
+         * @return this vector
+         */
         Vector & dropFrom(size_t index) {
             mLen = index;
             return *this;
         }
 
+        /** Gets an item on the index given
+         * index can be out of bounds
+         * @param index index of the item
+         * @return witteable reference to a vector item requested
+         */
         T & get(const size_t index) {
             workAferEnd(index);
             return mArray[index];
         }
+        /** Gets an item on the index given
+         * index can NOT be out of bounds
+         * @param index index of the item
+         * @return const reference to a vector item requested
+         */
         const T & get(const size_t index) const {
             assert(index < mLen);
             return mArray[index];
         }
-        inline T & pop() {
-            assert (mLen > 0);
+        /** Removes the last item in a vector
+         * @return the last item
+         */
+        T & pop() {
             T & toReturn = get(lastIndex());
             mLen--;
             return toReturn;
         }
+        /** Gets an item on the index given
+         * index can be out of bounds
+         * @param index index of the item
+         * @return witteable reference to a vector item requested
+         */
         inline T & operator[](const size_t index) { return get(index); }
+        /** Gets an item on the index given
+         * index can NOT be out of bounds
+         * @param index index of the item
+         * @return const reference to a vector item requested
+         */
         inline const T & operator[](const size_t index) const { return get(index); }
-
-        void prepare(const size_t newCapacity) {
-            if (newCapacity <= mCap) return;
-            mCap = newCapacity;
-            applyNewCapacity();
-        }
+        /** Sets vector size - prepares resources or invalidates old items
+         * @param newLen the new size of the vector
+         */
         void setSize(const size_t newLen) {
             expandToLen(newLen);
             mLen = newLen;
         }
+        /** Deletes all the items in a vector, invalides the data */
         void clear() {
             delete mArray;
+            mArray = nullptr;
             mLen = 0;
             mCap = 0;
         }
-        size_t lastIndex() const { return mLen > 0 ? mLen - 1 : 0; }
+        /** @return index of the last item or 0 for empty list */
+        size_t lastIndex() const { return isEmpty() ? 0 : mLen - 1; }
+        /** @return the size of a vector */
         inline size_t size() const { return mLen; }
-        inline size_t isEmpty() const { return mLen == 0; }
+        /** @return if a vector is empty */
+        inline bool isEmpty() const { return mLen == 0; }
     private:
-        void expandToLen(size_t len) {
+        /** Prepares for more items */
+        void expandToLen(const size_t len) {
             if (len >= mCap) {
                 do {
                     mCap = mCap * 3 / 2 + 42;
@@ -164,6 +227,7 @@ class Vector {
                 applyNewCapacity();
             }
         }
+        /** Moves items to a larger array */
         void applyNewCapacity() {
             T * newArray = new T [mCap];
             for (size_t i = 0; i < mLen; i++)
@@ -171,6 +235,9 @@ class Vector {
             delete [] mArray;
             mArray = newArray;
         }
+        /** Gets ready for item manipulation out of bounds
+         * @param index index to work at, to get ready
+         */
         void workAferEnd(const size_t index) {
             if (index >= mLen) {
                 expandToLen(index + 1);
@@ -178,6 +245,8 @@ class Vector {
             }
         }
     public:
+        /**
+         * Enables iteration through a vector */
         struct Iterator {
             private:
                 T * ptr;
@@ -200,26 +269,38 @@ class Vector {
                     return !(*this == other);
                 };
         };
+        /** Returs an iterator to the first item of a vector */
         Iterator begin() { return Iterator(mArray); }
+        /** Returs an iterator to the place after the last item of a vector */
         Iterator end() { return Iterator(mArray + mLen); }
 };
 
+/**
+ * Buffer is a vector of uint8_t
+ */
 typedef Vector<uint8_t> Buffer;
 
+/** Represents a version change*/
 class Version {
     private:
+        /** Represents one diff section between two files */
         class Change {
             private:
+                // index, where the change hapenned in a file
                 size_t mIndex;
+                // data to paset on the index
                 Buffer mBuffer;
             public:
                 Change() : mIndex(0) {}
                 Change(size_t index) : mIndex(index) {}
                 friend class CFile;
-        friend ostream & operator<<(ostream & out, Version & data);
+                friend ostream & operator<<(ostream & out, Version & data);
         };
+        // where was a curson while making a version
         size_t mPos;
+        // how long were the data at the time of making a version
         size_t mLen;
+        // list of individual changes/patches
         Vector<Change> mChanges;
     public:
         Version(size_t pos, size_t len, Vector<Change> & changes)
@@ -244,27 +325,36 @@ ostream & operator<<(ostream & out, Version & data) {
 }
 
 class CFile {
+    private:
+    // write and read cursors
     size_t mPos = 0, mLatestPos = 0;
+    // all the verson applied on the file
     Vector<SPtr<Version>> mVersions;
+    // buffers of file content data
+    // mCur - the current state
+    // mLatest - state when addVerson was called
     SPtr<Buffer> mCur = new Buffer, mLatest = new Buffer;
 
     public:
+    /** Creats an empty file buffer */
     CFile(void) {}
+    /** Copies all the internal data as shared pointers when posible */
     CFile(const CFile & other)
-    : mPos(other.mPos), mLatestPos(other.mLatestPos),
-      mVersions(other.mVersions),
-      mCur(other.mCur), mLatest(other.mLatest) {}
+        : mPos(other.mPos), mLatestPos(other.mLatestPos),
+        mVersions(other.mVersions),
+        mCur(other.mCur), mLatest(other.mLatest) {}
+    /** Moves all the internal data from another object */
     CFile(CFile && other)
-    : mPos(other.mPos), mLatestPos(other.mLatestPos),
-      mVersions(other.mVersions),
-      mCur(other.mCur), mLatest(other.mLatest) {
-        if (&other == this) return;
-        other.mPos = 0;
-        other.mLatestPos = 0;
-        other.mVersions.clear();
-        other.mCur    = nullptr;
-        other.mLatest = nullptr;
-    }
+        : mPos(other.mPos), mLatestPos(other.mLatestPos),
+        mVersions(other.mVersions),
+        mCur(other.mCur), mLatest(other.mLatest) {
+            if (&other == this) return;
+            other.mPos = 0;
+            other.mLatestPos = 0;
+            other.mVersions.clear();
+            other.mCur    = nullptr;
+            other.mLatest = nullptr;
+        }
     CFile & operator = (CFile other) {
         swap(mPos, other.mPos);
         swap(mLatestPos, other.mLatestPos);
@@ -275,13 +365,21 @@ class CFile {
     }
     ~CFile() {}
 
+    /** Moves write and read cursor to a position in the file
+     * @param offset position from the start of a file
+     * @return true if offset matches current buffer size, false othervise
+     */
     bool seek(uint32_t offset) {
         if (offset > mCur -> size()) return false;
         mPos = offset;
         return true;
     }
+    /** Reads data from this file
+     * @param dst array to store data to
+     * @param bytes how many bytes can be read at most
+     * @return how many bytes was actually read
+     */
     uint32_t read(uint8_t * dst, uint32_t bytes) {
-        // cout << "Size: " << mCur -> size() << " x Pos: " << mPos + bytes << endl;
         if (mCur -> isEmpty()) return 0;
         size_t maxBound = min(mCur -> size(), mPos + bytes);
         size_t read = 0;
@@ -289,26 +387,30 @@ class CFile {
             dst[read] = (*mCur)[mPos];
         return read;
     }
+    /** Write data to this file
+     * @param src where to read data from
+     * @param bytes how many bytes should be read
+     * @return how many byte has been written
+     */
     uint32_t write(const uint8_t * src, uint32_t bytes) {
         checkWrite();
         size_t end = mPos + bytes;
-        for (size_t read = 0; mPos < end; mPos++, read++) {
+        for (size_t read = 0; mPos < end; mPos++, read++)
             (*mCur)[mPos] = src[read];
-        }
         return bytes;
     }
-    uint32_t writeToBuffer(Buffer & target, size_t pos, const Buffer & src) {
-        size_t end = pos + src.size();
-        for (size_t read = 0; pos < end; pos++, read++) {
-            target[pos] = src[read];
-        }
-        return src.size();
-    }
+    /**
+     * Cuts data from the current cursor position
+     */
     void truncate(void) {
         checkWrite();
         mCur -> dropFrom(mPos);
     }
+    /** Returns how many bytes are in a file
+     * @return file size
+     */
     uint32_t fileSize(void) const { return mCur -> size(); };
+    /** Stores the current file state to a memory */
     void addVersion(void) {
         cout << "Crearing a new version" << endl;
         Vector<Version::Change> changes;
@@ -353,6 +455,7 @@ class CFile {
         mLatest = mCur;
         mLatestPos = mPos;
     }
+    /** Restores the lates version of a file stored */
     bool undoVersion(void) {
         cout << "Undoing version" << endl;
         if (mVersions.isEmpty()) return false;
@@ -370,17 +473,37 @@ class CFile {
         cout << version;
         return true;
     }
-    void printBuffer(ostream & out) const {
-        out << "Buf: Len: " << setfill(' ') << setw(2) << mCur -> size() << " Data: ";
+    /** Prints both internal buffers to the stream given
+     * uses 2 lines, is ended by a new line and flush
+     * @param out stream to print data to
+     */
+    void printBuffers(ostream & out) const {
+        out << "Buf: Len: " << mCur -> size() << " Data: ";
         for (size_t i = 0; i < mCur -> size(); i++)
             out << (uint32_t)(*mCur)[i] << ", ";
         out << endl;
-        out << "Lts: Len: " << setfill(' ') << setw(2) << mLatest -> size() << " Data: ";
+        out << "Lts: Len: " << mLatest -> size() << " Data: ";
         for (size_t i = 0; i < mLatest -> size(); i++)
             out << (uint32_t)(*mLatest)[i] << ", ";
         out << endl;
     }
     private:
+    /** Writes data to a buffer at position
+     * @param target where to write data to
+     * @param pos from where shloud be data written to
+     * @param where data should be read from
+     * @return how many bytes was written
+     */
+    uint32_t writeToBuffer(Buffer & target, size_t pos, const Buffer & src) {
+        size_t end = pos + src.size();
+        for (size_t read = 0; pos < end; pos++, read++)
+            target[pos] = src[read];
+        return src.size();
+    }
+    /** Resolves if current buffer can be written
+     * to without editing another file copied from thisone.
+     * Checks shared pointer, if it has only 1 reference.
+     * Otherwise makes a deep copy */
     void checkWrite() {
         if (mCur.hasOne()) return;
         cout << "Copying current buffer" << endl;
@@ -388,6 +511,10 @@ class CFile {
         *copy = *mCur;
         mCur = SPtr(copy);
     }
+    /** Resolves if latest buffer can be written
+     * to without editing another file copied from thisone.
+     * Checks shared pointer, if it has only 1 reference.
+     * Otherwise makes a deep copy */
     void checkWriteLatest() {
         if (mLatest.hasOne()) return;
         cout << "Copying latest buffer" << endl;
@@ -440,31 +567,22 @@ int main(void) {
     assert( f0.seek(1));
     assert( readTest(f0, { 20, 5, 4, 70, 80 }, 7));
     assert( f0.seek(3));
-    f0.printBuffer(cout);
     f0.addVersion();
 
     assert( f0.seek(6));
     assert( writeTest(f0, { 100, 101, 102, 103 }, 4));
-    f0.printBuffer(cout);
     f0.addVersion();
 
     assert( f0.seek(5));
-    cout << "Copy object" << endl;
     CFile f1(f0);
-    f0.printBuffer(cout);
-    cout << "Truncate" << endl;
     f0.truncate ();
     assert( f0.seek(0));
     assert( readTest(f0, { 10, 20, 5, 4, 70 }, 20));
-    f0.printBuffer(cout); cout << endl;
-    cout << "Apply undo" << endl;
     assert( f0.undoVersion ());
-    f0.printBuffer(cout);
 
     assert( f0.seek(0));
     assert( readTest(f0, { 10, 20, 5, 4, 70, 80, 100, 101, 102, 103 }, 20));
     assert( f0.undoVersion ());
-    f0.printBuffer(cout); cout << endl;
 
     assert( f0.seek(0));
     assert( readTest(f0, { 10, 20, 5, 4, 70, 80 }, 20));
@@ -472,16 +590,12 @@ int main(void) {
     assert( writeTest(f1, { 200, 210, 220 }, 3));
     assert( f1.seek(0));
     assert( readTest(f1, { 10, 20, 5, 4, 70, 200, 210, 220, 102, 103 }, 20));
-    f0.printBuffer(cout); cout << endl;
     assert( f1.undoVersion ());
-    f0.printBuffer(cout); cout << endl;
 
     assert( f1.undoVersion ());
-    f0.printBuffer(cout); cout << endl;
 
     assert( readTest(f1, { 4, 70, 80 }, 20));
     assert( !f1.undoVersion ());
-    f0.printBuffer(cout); cout << endl;
 
     cout << "All tests padded!" << endl;
     return EXIT_SUCCESS;
