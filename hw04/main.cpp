@@ -54,6 +54,21 @@ class SPtr {
             std::swap(mCnt, src.mCnt);
             return *this;
         }
+        /**
+         * Deletes holded data in a shared pointer if there
+         * is no other reference to it
+         */
+        ~SPtr() {
+            if (mCnt != nullptr) {
+                mCnt -> counter --;
+                if (mCnt -> counter == 0) {
+                    delete mCnt;
+                    delete mPtr;
+                }
+            } else delete mPtr;
+            mCnt = nullptr;
+            mPtr = nullptr;
+        }
         T & operator *  () const { return *mPtr; }
         T * operator -> () const { return mPtr; }
         bool operator == (const SPtr & other) const {
@@ -72,19 +87,6 @@ class SPtr {
          * @return if this shared counter is shared among 1 owner only
          */
         bool hasOne() const { return mCnt -> counter == 1; }
-        /**
-         * Deletes holded data in a shared pointer if there
-         * is no other reference to it
-         */
-        ~SPtr() {
-            mCnt -> counter --;
-            if (mCnt -> counter == 0) {
-                delete mCnt;
-                delete mPtr;
-            }
-            mCnt = nullptr;
-            mPtr = nullptr;
-        }
 };
 
 /**
@@ -197,6 +199,16 @@ class Vector {
          * @return const reference to a vector item requested
          */
         inline const T & operator[](const size_t index) const { return get(index); }
+        /** Trims non needed allocated capacity */
+        void trimCapacity() {
+            if (mLen == 0) {
+                clear();
+                return;
+            }
+            if (mLen == mCap) return;
+            mCap = mLen;
+            applyNewCapacity();
+        }
         /** Sets vector size - prepares resources or invalidates old items
          * @param newLen the new size of the vector
          */
@@ -206,7 +218,7 @@ class Vector {
         }
         /** Deletes all the items in a vector, invalides the data */
         void clear() {
-            delete mArray;
+            delete [] mArray;
             mArray = nullptr;
             mLen = 0;
             mCap = 0;
@@ -222,7 +234,7 @@ class Vector {
         void expandToLen(const size_t len) {
             if (len >= mCap) {
                 do {
-                    mCap = mCap * 3 / 2 + 42;
+                    mCap = mCap * 4 / 3 + 8;
                 } while(len >= mCap);
                 applyNewCapacity();
             }
@@ -412,7 +424,6 @@ class CFile {
     uint32_t fileSize(void) const { return mCur -> size(); };
     /** Stores the current file state to a memory */
     void addVersion(void) {
-        cout << "Crearing a new version" << endl;
         Vector<Version::Change> changes;
         if (mLatest == mCur) {
             mVersions.add(new Version(mLatestPos, mLatest -> size(), move(changes)));
@@ -431,6 +442,7 @@ class CFile {
                 current.mBuffer.add((*mLatest)[i]);
             } else {
                 if (inChange) {
+                    current.mBuffer.trimCapacity();
                     changes.add(move(current));
                     inChange = false;
                 }
@@ -445,23 +457,21 @@ class CFile {
                 current.mBuffer.add((*mLatest)[i]);
         }
         if (inChange) {
+            current.mBuffer.trimCapacity();
             changes.add(move(current));
             inChange = false;
         }
-
-        Version tmp = Version(mLatestPos, mLatest -> size(), changes);
-        cout << tmp;
         mVersions.add(new Version(mLatestPos, mLatest -> size(), move(changes)));
         mLatest = mCur;
         mLatestPos = mPos;
     }
     /** Restores the lates version of a file stored */
     bool undoVersion(void) {
-        cout << "Undoing version" << endl;
         if (mVersions.isEmpty()) return false;
 
         mCur = mLatest;
         mPos = mLatestPos;
+        mCur -> trimCapacity();
 
         checkWriteLatest();
         Version & version = *(mVersions.pop());
@@ -470,7 +480,8 @@ class CFile {
         for (const Version::Change & change : version.mChanges) {
             writeToBuffer(*mLatest, change.mIndex, change.mBuffer);
         }
-        cout << version;
+        mLatest -> trimCapacity();
+        mVersions.trimCapacity();
         return true;
     }
     /** Prints both internal buffers to the stream given
@@ -506,7 +517,6 @@ class CFile {
      * Otherwise makes a deep copy */
     void checkWrite() {
         if (mCur.hasOne()) return;
-        cout << "Copying current buffer" << endl;
         Buffer * copy = new Buffer;
         *copy = *mCur;
         mCur = SPtr(copy);
@@ -517,7 +527,6 @@ class CFile {
      * Otherwise makes a deep copy */
     void checkWriteLatest() {
         if (mLatest.hasOne()) return;
-        cout << "Copying latest buffer" << endl;
         Buffer * copy = new Buffer;
         *copy = *mLatest;
         mLatest = SPtr(copy);
