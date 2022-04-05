@@ -1,0 +1,32 @@
+Každý správný manažer si schovává své nejdůležitější a nejtajnější soubory na svém pracovním stolním PC. Není tomu ani jinak u fiktivní firmy FarmComp a jejího majitele (Zoltán Yayan; pozn. red.). Právě pro něj máte za úkol vyrobit jednoduchý souborový systém.
+Vaším úkolem je napsat sadu tříd, které budou reprezentovat souborový systém:
+
+CFile
+Třída reprezentuje základní soubor v zjednodušené formě. U souboru se eviduje pouze jeho velikost a hash dat (textový řetězec).
+
+CFile::CFile( hash, filesize ) - vytvoří objekt s předanými parametry
+CFile::Size() - vrátí velikost souboru
+CFile::Change( hash, filesize ) - nastaví souboru nový hash a velikost, volání lze řetězit
+CLink
+Třída reprezentuje symbolický link. Evidujeme pouze samotnou cestu k souboru, není nutné validovat, že zadaná cesta je validní.
+
+CLink::CLink( path ) - vytvoří link s předanými parametry
+CLink::Size() - vrátí velikost linku, která je rovna počtu znaků v cestě + 1 (ukončující nula)
+CLink::Change( path ) - nastaví linku novou cestu, volání lze řetězit
+CDirectory
+Třída reprezentuje adresář souborů. Evidujeme vždy dvojice název souboru a soubor. Do adresáře lze vkládat nejen standardní soubory CFile, ale také CLink i CDirectory.
+
+CDirectory::CDirectory() - vytvoří prázdný adresář
+CDirectory::Size() - vrátí velikost složky, která je rovna součtu velikostí souborů (vč. adresářů rekurzivně) a počtu znaků v jejich názvech.
+CDirectory::Change( filename, file ) - přidá nebo nahradí v adresáři soubor file s názvem filename, volání lze řetězit
+CDirectory::Change( filename, nullptr ) - odstraní z adresáře soubor s názvem filename, volání lze řetězit
+CDirectory::Get( filename ) - vrátí z adresáře referenci na soubor s názvem filename (vyžaduje i variantu s const, neprohledává rekurzivně), pokud soubor filename v adresáři neexistuje, vyhoďte výjimku std::out_of_range
+operator<<( ostream &, directory ) - operátor pro výpis (formát výpisu je velikost souboru, tabulátor, název souboru a další parametry dle druhu souboru, viz ukázka)
+Úloha je zaměřena na správný objektový návrh a polymorfismus. Správný návrh a polymorfismus dokáží ušetřit mnoho psaní. Implementace, bez využití polymorfismu neprojde testem návrhu tříd.
+
+Nápověda
+Do požadovaných tříd si můžete přidat vlastní metody nebo dokonce celé třídy.
+Pokud vám program nejde zkompilovat, ujistěte se, že dodržujete požadované rozhraní a nezapomínáte na klíčové slovo const.
+Testovací prostředí vytváří kopie vašich objektů, nezapomeňte tedy vytvořit případný kopírující konstruktor a operátor přiřazení, pokud to vaše třídy vyžadují.
+Pro předávání a ukládání textových řetězců využijte std::string.
+UPDATE 5.4.2021: Soubory ve výpisu jsou řazeny dle názvu souboru.
