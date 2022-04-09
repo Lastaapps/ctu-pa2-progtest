@@ -64,11 +64,6 @@ class NameCount {
         string name;
         int count;
         NameCount(string n, int c): name(move(n)), count(c) {}
-        struct CountCmpInv {
-            bool operator()(const NameCount & i1, const NameCount & i2) const {
-                return i1.count > i2.count;
-            }
-        };
 };
 class DateCount {
     public:
@@ -82,11 +77,6 @@ class StoreItem {
         CDate date;
         int count;
         StoreItem(string n, const CDate & d, int c): name(move(n)), date(d), count(c) {}
-        struct DateCmpInv {
-            bool operator()(const StoreItem & i1, const StoreItem & i2) const {
-                return i1.date > i2.date;
-            }
-        };
         friend ostream & operator<<(ostream & out, const StoreItem & item);
 };
 ostream & operator<<(ostream & out, const StoreItem & item) {
@@ -94,33 +84,141 @@ ostream & operator<<(ostream & out, const StoreItem & item) {
     return out;
 }
 
+namespace cmp {
+    struct DateCmp {
+        bool operator()(const CDate & i1, const CDate & i2) const {
+            return i1 < i2;
+        }
+        bool operator()(const StoreItem & i1, const StoreItem & i2) const {
+            return i1.date < i2.date;
+        }
+    };
+    struct DateCmpInv {
+        bool operator()(const CDate & i1, const CDate & i2) const {
+            return i1 > i2;
+        }
+        bool operator()(const StoreItem & i1, const StoreItem & i2) const {
+            return i1.date > i2.date;
+        }
+    };
+    struct CountCmpInv {
+        bool operator()(const NameCount & i1, const NameCount & i2) const {
+            return i1.count > i2.count;
+        }
+    };
+}
+
+typedef map<CDate, int, cmp::DateCmp> DateCountMap; 
 class CSupermarket {
-    multimap<string, DateCount> mMap;
-    set<StoreItem, StoreItem::DateCmpInv> mSet;
+    map<string, DateCountMap> mMap;
+    set<StoreItem, cmp::DateCmpInv> mSet;
     public:
     CSupermarket() {}
     ~CSupermarket() {}
     CSupermarket & store(string name, CDate expiryDate, int count) {
-        //mMap.insert(name, DateCount(expiryDate, count));
+        auto mapItr = mMap.find(name);
+        if (mapItr == mMap.end()) {
+            DateCountMap subMap;
+            subMap.insert(make_pair(expiryDate, count));
+            mMap.insert(make_pair(name, subMap));
+        } else {
+            DateCountMap & subMap = mapItr -> second;
+            auto subItr = subMap.find(expiryDate);
+            if (subItr == subMap.end()) {
+                subMap.insert(make_pair(expiryDate, count));
+            } else {
+                subItr -> second += count;
+            }
+        }
+
         mSet.insert(StoreItem(name, expiryDate, count));
         return *this;
     }
-    CSupermarket & sell(const ProdList & shoppingLista) {
+
+
+    CSupermarket & sell(ProdList & shoppingList) {
+        for (auto & item : shoppingList)
+            item.second = doBusyness(item.first, item.second);
+
+        while (shoppingList.size() != 0 && shoppingList.begin() -> second == 0)
+            shoppingList.pop_front();
+
+        if (shoppingList.size() > 1) {
+            auto itr = shoppingList.begin()++;
+            while(itr != shoppingList.end()) {
+                if (itr -> second == 0) {
+                    auto toRemove = itr--;
+                    shoppingList.erase(toRemove);
+                }
+                itr++;
+            }
+        }
         return *this;
     }
+    inline int doBusyness(const string & name, int count) {
+        map<string, DateCountMap>::iterator dataPtr;
+        if (!findItem(name, dataPtr)) return count;
+        DateCountMap& data = dataPtr -> second;
+        vector<CDate> toRemove;
+        for (auto &[key, value] : data) {
+            if (value > count) {
+                value -= count;
+                count = 0;
+                break;
+            } else {
+                count -= value;
+                toRemove.push_back(key);
+            }
+        }
+        for (const auto & key : toRemove)
+            data.erase(key);
+        return count;
+    }
+    inline bool findItem(const string & name, map<string, DateCountMap>::iterator & mapOut) {
+        auto mapItr = mMap.find(name);
+        if (mapItr != mMap.end()) {
+            mapOut = mapItr;
+        } else {
+            bool anyFound = false;
+            for (auto subItr = mMap.begin(); subItr != mMap.end(); subItr++) {
+                const string & key = subItr -> first;
+                if (nameMatch(name, key)) {
+                    if (anyFound) return false;
+                    anyFound = true;
+                    mapOut = subItr;
+                }
+            }
+            if (!anyFound) return false;
+        }
+        return true;
+    }
+    inline bool nameMatch(const string & str1, const string & str2) {
+        const size_t len = str1.length();
+        if (len != str2.length()) return false;
+        bool diffFound = false;
+        for (size_t i = 0; i < len; i++) {
+            if (str1[i] != str2[i]) {
+                if(diffFound) return false;
+                diffFound = true;
+            }
+        }
+        return true;
+    }
+
+
     ProdList expired(const CDate & date) const {
         map<string, int> expired;
-        set<NameCount, NameCount::CountCmpInv> sorted;
+        set<NameCount, cmp::CountCmpInv> sorted;
         ProdList outList;
 
         auto itr = mSet.lower_bound(StoreItem("", date, 0));
         for (; itr != mSet.end(); ++itr) {
             const StoreItem & item = *itr;
-            auto mapIter = expired.find(item.name);
-            if (mapIter == expired.end())
+            auto mapItr = expired.find(item.name);
+            if (mapItr == expired.end())
                 expired.insert(make_pair(item.name, item.count));
             else
-                mapIter -> second += item.count;
+                mapItr -> second += item.count;
         }
         for (auto const & [name, count] : expired)
             sorted.insert(NameCount(name, count));
@@ -153,7 +251,6 @@ int main(void){
     printList(l0);
     assert( l0.size () == 4 );
     assert((l0 == list<pair<string,int>> { { "bread", 200 }, { "beer", 50 }, { "butter", 10 }, { "okey", 5 } }));
-    return 0;
 
     list<pair<string,int>> l1 { { "bread", 2 }, { "Coke", 5 }, { "butter", 20 } };
     s.sell(l1 );
