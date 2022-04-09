@@ -487,8 +487,9 @@ int main(void) {
     assert( l15.size () == 1 );
     assert((l15 == list<pair<string,int>> { { "ccccc", 10 } }));
 
-    printLine("It's over, Mr. Frodo");
-    printLine("It's finally done!");
+    cout << endl;
+    printLine("It's done!");
+    printLine("Yes, Mr. Frodo, it's over now.");
 
     return EXIT_SUCCESS;
 }
