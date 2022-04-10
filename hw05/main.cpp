@@ -20,87 +20,181 @@
 using namespace std;
 #endif /* __PROGTEST__ */
 
+/** Holds date, year, month and day of month */
 class CDate {
     private:
         uint16_t mY;
         uint8_t mM, mD;
     public:
+        /** Construct new date
+         * @param y - year
+         * @param m - moth
+         * @param d - day of month */
         CDate(uint16_t y, uint8_t m, uint8_t d);
+        /**
+         * Compare two dates, earlier < later
+         * @param o other date to compare to
+         * @return true if the toher date is latter then this */
         bool operator<(const CDate & o) const;
+        /**
+         * Compare two dates, earlier > later
+         * @param o other date to compare to
+         * @return true if the toher date is earlier then this */
         bool operator>(const CDate & o) const;
+        /** Checks if dates are the same
+         * @param o other date
+         * @return it dates are the same */
         bool operator==(const CDate & o) const;
-        bool operator!=(const CDate & o) const;
+        /** Checks if dates are not the same
+         * @param o other date
+         * @return it dates are not the same */
+        inline bool operator!=(const CDate & o) const;
+        /** Prints date in [yyyy-mm-dd] format
+         * @param out stream to print to
+         * @param date date to print
+         * @return the same out stream as passed in out param */
         friend ostream & operator<<(ostream & out, const CDate & date);
 };
 
-class NameCount {
-    public:
-        string name;
-        int count;
-        NameCount(string n, int c): name(move(n)), count(c) {}
+/** Holds item name and count
+ * replacement for pair<string, int> */
+struct NameCount {
+    string name;
+    int count;
+    NameCount(string n, int c): name(move(n)), count(c) {}
 };
-class StoreItem {
-    public:
-        string name;
-        CDate date;
-        int count;
-        StoreItem(string n, const CDate & d, int c): name(move(n)), date(d), count(c) {}
-        friend ostream & operator<<(ostream & out, const StoreItem & item);
+/** Holds all the item info - name, date and count */
+struct StoreItem {
+    string name;
+    CDate date;
+    int count;
+    StoreItem(string n, const CDate & d, int c): name(move(n)), date(d), count(c) {}
+    /** Print item in (name, date, count) format
+     * @param out stream to print to
+     * @param item item to print
+     * @return the same out stream as passed in out param */
+    friend ostream & operator<<(ostream & out, const StoreItem & item);
 };
 
 namespace cmp {
+    /** Comparator using default date < operator
+     * kind of useless, but makes code more coherent */
     struct DateCmp {
         bool operator()(const CDate & i1, const CDate & i2) const;
     };
+    /** Compares two items according this rules
+     * date1  > date2
+     * name1  > name2
+     * count1 < count2
+     * It's ised is set sorting in expired method
+     * @return true if all the rules are mached */
     struct DateComplexCmpInv {
         bool operator()(const StoreItem & i1, const StoreItem & i2) const;
     };
+    /** Compares two NameCounts using these rules
+     * count1 > count2
+     * name1  > name2
+     * so you can se, they are inverse to the normal < operator
+     * @return true if the rules are matched */
     struct CountCmpInv {
         bool operator()(const NameCount & i1, const NameCount & i2) const;
     };
 }
 
+// shortcuts for CSupermarket
 typedef map<CDate, int, cmp::DateCmp> DateCountMap;
 typedef unordered_map<string, DateCountMap> MainMap;
 typedef list<pair<string,int>> ProdList;
 
 namespace cmp {
+    /** Compares two MainMap iterators
+     * uses string < operator under the hood */
     struct MainMapItrCmp {
         int operator()(const MainMap::iterator & itr1, const MainMap::iterator & itr2) const; 
     };
+    /** Computes the hash code for a MainMap iterator
+     * uses string hash functor under the hood */
     struct MainMapItrHash {
         int operator()(const MainMap::iterator & itr) const;
     };
 }
 
+/** Manages all the storage management */
 class CSupermarket {
+    // stores item in the way optimal for sell() method
     MainMap mMap;
+    // stores item in the way optimal for expired() method
     set<StoreItem, cmp::DateComplexCmpInv> mSet;
     public:
+    /** Creates an empty instasce of storage */
     CSupermarket();
     ~CSupermarket();
+    /** Stores an item in the supermarket storage
+     * @param name name of the item
+     * @param expiryDate date when the item expires
+     * @param count count of the item
+     * @return reference to this to enable chaining */
     CSupermarket & store(string name, const CDate & expiryDate, int count);
 
     private:
+    /** Replacement for pair<ProdList::iterator, MainMap::iterator>
+     * used in sell() method implementation */
     struct AdvancedItem {
         ProdList::iterator listItr;
         MainMap::iterator mapItr;
     };
 
     public:
+    /** Sells item from storage according to assignment.txt description
+     * @param shoppingList list of items to sell
+     * @return reference to this to enable chaining */
     CSupermarket & sell(ProdList & shoppingList);
     private:
+    /** Tries to remove items from storage
+     * @param mapItr place to take items from
+     * @param count how many items at most can be taken
+     * @return the number of items left/not taken from storage */
     inline int doBusiness(MainMap::iterator & mapItr, int count);
+    /** Removes empty maps from MainMap
+     * @param list of changed maps that can be not empty */
     inline void cleanUpMap(list<AdvancedItem> & data);
+    /** Find item in MainMap with exact name match or
+     * one with one letter changed (there cannot be more like this one)
+     * @param name name to search for
+     * @param mapOut iterator to the place found, may be changed even if
+     *        the method returns false
+     * @return true if an item was found, false otherwise */
     inline bool findItem(const string & name, MainMap::iterator & mapOut);
-    inline bool nameMatch(const string & str1, const string & str2);
+    /** Checks if two names are the same except one character
+     * @param str1 first string to compare
+     * @param str2 second string to compare
+     * @return true if the strings match */
+    inline bool nameMatch(const string & str1, const string & str2) const;
+
+    /** Insert an item to mSet. If the item already exists, the count is added
+     * @param name the name of the item
+     * @param date the date of item expiration
+     * @param count the amounth of the item added to the storage */
     void insertOrUpdateToSet(const string & name, const CDate & date, int count);
+    /** Find item in set and replaces its count field
+     * Item with same name and date must exist int the set
+     * If count is 0, item is removed from the set
+     * @param name the name of the item
+     * @param date the expiration date of the item
+     * @param count the number of the item remaining in the storage */
     void updateInSet(const string & name, const CDate & date, int count);
 
     public:
+    /** Create a list of items that would be expired on a date given
+     * @param date the date for which we want to find the expired items
+     * @return list of expired items sorted by count decs */
     ProdList expired(const CDate & date) const;
 
+    /** Prints map content, ends with '\n' char
+     * @param out stream to print into */
     void printMap(ostream & out = cout) const;
+    /** Prints set content, ends with '\n' char
+     * @param out stream to print into */
     void printSet(ostream & out = cout) const;
 };
 
@@ -249,7 +343,7 @@ inline void CSupermarket::cleanUpMap(list<AdvancedItem> & data) {
             mMap.erase(mapItr);
 }
 inline bool CSupermarket::findItem(const string & name, MainMap::iterator & mapOut) {
-    auto mapItr = mMap.find(name);
+    const auto mapItr = mMap.find(name);
     if (mapItr != mMap.end()) {
         mapOut = mapItr;
     } else {
@@ -266,7 +360,7 @@ inline bool CSupermarket::findItem(const string & name, MainMap::iterator & mapO
     }
     return true;
 }
-inline bool CSupermarket::nameMatch(const string & str1, const string & str2) {
+inline bool CSupermarket::nameMatch(const string & str1, const string & str2) const {
     const size_t len = str1.length();
     if (len != str2.length()) return false;
     bool diffFound = false;
