@@ -60,13 +60,16 @@ namespace cmp {
     };
 }
 
-typedef map<CDate, int, cmp::DateCmp> DateCountMap; 
-typedef map<string, DateCountMap> MainMap;
+typedef map<CDate, int, cmp::DateCmp> DateCountMap;
+typedef unordered_map<string, DateCountMap> MainMap;
 typedef list<pair<string,int>> ProdList;
 
 namespace cmp {
     struct MainMapItrCmp {
         int operator()(const MainMap::iterator & itr1, const MainMap::iterator & itr2) const; 
+    };
+    struct MainMapItrHash {
+        int operator()(const MainMap::iterator & itr) const;
     };
 }
 
@@ -76,7 +79,7 @@ class CSupermarket {
     public:
     CSupermarket();
     ~CSupermarket();
-    CSupermarket & store(string name, CDate expiryDate, int count);
+    CSupermarket & store(string name, const CDate & expiryDate, int count);
 
     private:
     struct AdvancedItem {
@@ -89,7 +92,7 @@ class CSupermarket {
     private:
     inline int doBusiness(MainMap::iterator & mapItr, int count);
     inline void cleanUpMap(list<AdvancedItem> & data);
-    inline bool findItem(const string & name, map<string, DateCountMap>::iterator & mapOut);
+    inline bool findItem(const string & name, MainMap::iterator & mapOut);
     inline bool nameMatch(const string & str1, const string & str2);
     void insertOrUpdateToSet(const string & name, const CDate & date, int count);
     void updateInSet(const string & name, const CDate & date, int count);
@@ -164,10 +167,13 @@ bool cmp::CountCmpInv::operator()(const NameCount & i1, const NameCount & i2) co
 int cmp::MainMapItrCmp::operator()(const MainMap::iterator & itr1, const MainMap::iterator & itr2) const {
     return itr1 -> first < itr2 -> first;
 }
+int cmp::MainMapItrHash::operator()(const MainMap::iterator & itr) const {
+    return std::hash<string>()(itr -> first);
+}
 
 CSupermarket::CSupermarket() {}
 CSupermarket::~CSupermarket() {}
-CSupermarket & CSupermarket::store(string name, CDate expiryDate, int count) {
+CSupermarket & CSupermarket::store(string name, const CDate & expiryDate, int count) {
     auto mapItr = mMap.find(name);
     if (mapItr == mMap.end()) {
         DateCountMap subMap;
@@ -235,14 +241,14 @@ inline int CSupermarket::doBusiness(MainMap::iterator & mapItr, int count) {
     return count;
 }
 inline void CSupermarket::cleanUpMap(list<AdvancedItem> & data) {
-    set<MainMap::iterator, cmp::MainMapItrCmp> iterators;
+    unordered_set<MainMap::iterator, cmp::MainMapItrHash> iterators;
     for (auto & [listItr, mapItr] : data)
         iterators.insert(mapItr);
     for (MainMap::iterator mapItr : iterators)
         if (mapItr -> second.empty())
             mMap.erase(mapItr);
 }
-inline bool CSupermarket::findItem(const string & name, map<string, DateCountMap>::iterator & mapOut) {
+inline bool CSupermarket::findItem(const string & name, MainMap::iterator & mapOut) {
     auto mapItr = mMap.find(name);
     if (mapItr != mMap.end()) {
         mapOut = mapItr;
@@ -267,7 +273,7 @@ inline bool CSupermarket::nameMatch(const string & str1, const string & str2) {
     for (size_t i = 0; i < len; i++) {
         if (str1[i] != str2[i]) {
             if(diffFound) {
-                return false; 
+                return false;
             }
             diffFound = true;
         }
@@ -296,7 +302,7 @@ void CSupermarket::updateInSet(const string & name, const CDate & date, int coun
 }
 
 ProdList CSupermarket::expired(const CDate & date) const {
-    map<string, int> expired;
+    unordered_map<string, int> expired;
     set<NameCount, cmp::CountCmpInv> sorted;
     ProdList outList;
 
