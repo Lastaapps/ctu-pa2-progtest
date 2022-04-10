@@ -318,6 +318,7 @@ inline int CSupermarket::doBusiness(MainMap::iterator & mapItr, int count) {
     DateCountMap& data = mapItr -> second;
     vector<CDate> toRemove;
     for (auto &[key, value] : data) {
+        if (count == 0) break;
         if (value > count) {
             value -= count;
             count = 0;
@@ -366,9 +367,7 @@ inline bool CSupermarket::nameMatch(const string & str1, const string & str2) co
     bool diffFound = false;
     for (size_t i = 0; i < len; i++) {
         if (str1[i] != str2[i]) {
-            if(diffFound) {
-                return false;
-            }
+            if(diffFound) return false;
             diffFound = true;
         }
     }
@@ -376,7 +375,7 @@ inline bool CSupermarket::nameMatch(const string & str1, const string & str2) co
 }
 void CSupermarket::insertOrUpdateToSet(const string & name, const CDate & date, int count) {
     auto setItr = mSet.lower_bound(StoreItem(name, date, 0));
-    if (setItr -> name == name && setItr -> date == date) {
+    if (setItr != mSet.end() && setItr -> name == name && setItr -> date == date) {
         StoreItem item = *setItr;
         item.count += count;
         mSet.erase(setItr);
