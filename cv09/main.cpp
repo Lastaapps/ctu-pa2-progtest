@@ -19,163 +19,138 @@
 using namespace std;
 #endif /* __PROGTEST__ */
 
-class CLinkedSet {
+template<typename T>
+class CSet {
     private:
         struct CNode {
-            CNode * m_Next = nullptr;
-            char * m_Chars;
+            CNode * mNext = nullptr;
+            T mValue;
 
-            CNode(const char * c) {
-                const size_t len = strlen(c);
-                m_Chars = new char[len + 1];
-                for (size_t i = 0; i < len + 1; i++)
-                    m_Chars[i] = c[i];
-            }
-            ~CNode() {
-                delete [] m_Chars;
-            }
-            const char * Value () const { return m_Chars; }
+            CNode(const T & val) : mValue(val) {}
+            ~CNode() = default;
+            T& Value() { return mValue; }
+            const T& Value() const { return mValue; }
         };
 
-        CNode * m_Begin = nullptr;
-        size_t m_Size = 0;
+        CNode * mBegin = nullptr;
+        size_t mSize = 0;
     public:
-        CLinkedSet() {}
-        CLinkedSet(const CLinkedSet & set) {
-            CNode * node = set.m_Begin;
-            CNode ** target = &m_Begin;
+        CSet() {}
+        CSet(const CSet & set) {
+            CNode * node = set.mBegin;
+            CNode ** target = &mBegin;
             while(node != nullptr) {
                 *target = new CNode(node -> Value());
-                target = &((*target) -> m_Next);
-                node = node -> m_Next;
+                target = &((*target) -> mNext);
+                node = node -> mNext;
             }
-            m_Size = set.m_Size;
+            mSize = set.mSize;
         }
-        //CLinkedSet(const CLinkedSet && set);
-        ~CLinkedSet() {
-            CNode * node = m_Begin;
+        //CSet(const CSet && set);
+        ~CSet() {
+            CNode * node = mBegin;
             while (node != nullptr) {
-                CNode * next = node -> m_Next;
+                CNode * next = node -> mNext;
                 delete node;
                 node = next;
             }
-            m_Begin = nullptr;
-            m_Size = 0;
+            mBegin = nullptr;
+            mSize = 0;
         }
-        CLinkedSet & operator=(CLinkedSet set) {
+        CSet & operator=(CSet set) {
             {
-                CNode * const tmp = m_Begin;
-                m_Begin = set.m_Begin;
-                set.m_Begin = tmp;
+                CNode * const tmp = mBegin;
+                mBegin = set.mBegin;
+                set.mBegin = tmp;
             }
             {
-                const size_t tmp = m_Size;
-                m_Size = set.m_Size;
-                set.m_Size = tmp;
+                const size_t tmp = mSize;
+                mSize = set.mSize;
+                set.mSize = tmp;
             }
             return *this;
         }
 
-        bool Insert ( const char * value ) {
-            if (m_Begin == nullptr) {
-                m_Begin = new CNode(value);
-                m_Size++;
+        bool Insert ( const T & value ) {
+            if (mBegin == nullptr) {
+                mBegin = new CNode(value);
+                mSize++;
                 return true;
             }
             {
-                int cmp = strcmp(value, m_Begin -> Value());
+                int cmp = itemCmp(value, mBegin -> Value());
                 if (cmp == 0) return false;
                 if (cmp < 0) {
-                    CNode * old = m_Begin;
-                    m_Begin = new CNode(value);
-                    m_Begin -> m_Next = old;
-                    m_Size++;
+                    CNode * old = mBegin;
+                    mBegin = new CNode(value);
+                    mBegin -> mNext = old;
+                    mSize++;
                     return true;
                 }
             }
-            CNode * node = m_Begin -> m_Next;
-            CNode ** prev = &m_Begin;
+            CNode * node = mBegin -> mNext;
+            CNode ** prev = &mBegin;
             while(node != nullptr) {
-                int cmp = strcmp(value, node -> Value());
+                int cmp = itemCmp(value, node -> Value());
                 if (cmp == 0) return false;
                 if (cmp < 0) {
                     CNode * newNode = new CNode(value);
-                    (*prev) -> m_Next = newNode;
-                    newNode -> m_Next = node;
-                    m_Size++;
+                    (*prev) -> mNext = newNode;
+                    newNode -> mNext = node;
+                    mSize++;
                     return true;
                 }
-                prev = &((*prev) -> m_Next);
-                node = node -> m_Next;
+                prev = &((*prev) -> mNext);
+                node = node -> mNext;
             }
-            (*prev) -> m_Next = new CNode(value);
-            m_Size++;
+            (*prev) -> mNext = new CNode(value);
+            mSize++;
             return true;
         }
-        bool Remove ( const char * value ) {
-            if (m_Size == 0) return false;
+        bool Remove ( const T& value ) {
+            if (mSize == 0) return false;
             {
-                int cmp = strcmp(value, m_Begin -> Value());
+                int cmp = itemCmp(value, mBegin -> Value());
                 if (cmp == 0) {
-                    CNode * next = m_Begin -> m_Next;
-                    delete m_Begin;
-                    m_Begin = next;
-                    m_Size--;
+                    CNode * next = mBegin -> mNext;
+                    delete mBegin;
+                    mBegin = next;
+                    mSize--;
                     return true;
                 }
             }
-            CNode * node = m_Begin -> m_Next;
-            CNode ** prev = &m_Begin;
+            CNode * node = mBegin -> mNext;
+            CNode ** prev = &mBegin;
             while(node != nullptr) {
-                int cmp = strcmp(value, node -> Value());
-                // cout << "Comparing P: " << (*prev) -> Value() << " and N: " << node -> Value() << endl;
+                int cmp = itemCmp(value, node -> Value());
                 if (cmp == 0) {
-                    (*prev) -> m_Next = node -> m_Next;
+                    (*prev) -> mNext = node -> mNext;
                     delete node;
-                    m_Size--;
+                    mSize--;
                     return true;
                 }
-                prev = &((*prev) -> m_Next);
-                node = node -> m_Next;
+                prev = &((*prev) -> mNext);
+                node = node -> mNext;
             }
             return false;
         }
-        bool Contains ( const char * value ) const {
-            CNode * node = m_Begin;
+        bool Contains ( const T& value ) const {
+            CNode * node = mBegin;
             while (node != nullptr) {
-                if (strcmp(value, node -> Value()) == 0)
+                if (itemCmp(value, node -> Value()) == 0)
                     return true;
-                node = node -> m_Next;
+                node = node -> mNext;
             }
             return false;
         }
         bool Empty () const { return Size() == 0; }
-        size_t Size () const { return m_Size; }
-
-        friend class ::CLinkedSetTester;
-        friend void printLinkedSet(const CLinkedSet & set);
-};
-
-template<typename T>
-class CSet {
+        size_t Size () const { return mSize; }
     private:
-
-    public:
-        // default constructor
-
-        // copy constructor
-
-        // operator=
-
-        // destructor
-
-        // Insert
-
-        // Remove
-
-        // Contains
-
-        // Size
+        int itemCmp(const T& i1, const T& i2) const {
+            if (i1 < i2) return -1;
+            if (i2 < i1) return  1;
+            return 0;
+        }
 };
 
 #ifndef __PROGTEST__
