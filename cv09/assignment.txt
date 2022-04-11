@@ -1,0 +1,28 @@
+Vaším úkolem je realizovat šablonu CSet, která bude reprezentovat abstraktní datový typ množina. Po vás se chce implementovat jen základní operace, splňující následující rozhraní:
+
+konstruktor bez parametrů
+Inicializuje prázdnou množinu.
+kopírující konstruktor
+Vytvoří hlubokou kopii.
+operátor přiřazení
+Odstraní aktuální množinu a vytvoří hlubokou kopii předané.
+destruktor
+Uvolní alokované prostředky.
+bool Insert ( Type )
+Vloží do množiny objekt typu Type, vrací true pokud se vložení povede. Pokud již v množině objekt je, vrátí funkce false a množinu nemění.
+bool Remove ( Type )
+Odstraní z množiny objekt typu Type, vrací true pokud se smazání povede. Pokud v množině objekt není, vrátí funkce false a množinu nemění.
+size_t Size () const
+Vrací počet prvků v množině.
+bool Contains ( Type )
+Vrací true pokud se objekt typu Type nachází v množině, jinak false.
+Třída Type, parametr šablony, má garantované následující funkcionality:
+
+kopírující konstruktor,
+operátor přiřazení,
+operator< pro porovnání dvou prvků.
+Pro implementaci můžete využít třídu CLinkedSet z dřívější procvičovací úlohy.
+
+Nápověda
+Pokud budete implementovat CSet pomocí pole, zamyslete se, zda vám budou dostačovat funkcionality třídy Type.
+Pokud vám program nejde zkompilovat, ujistěte se, že dodržujete specifikované rozhraní (nepožadujete od prvků nic navíc).
