@@ -23,27 +23,146 @@
 #include <memory>
 using namespace std;
 #endif /* __PROGTEST__ */
-class CDataTypeInt {
-    // todo
+
+class DataType {
+    public:
+        virtual ~DataType() {}
+        virtual bool operator==(const DataType & type) const = 0;
+        bool operator!=(const DataType & type) const {
+            return !(*this == type);
+        }
+        virtual size_t getSize() const = 0;
+        virtual void printTo(ostream & out) const = 0;
+        virtual DataType * clone() const = 0;
 };
-class CDataTypeDouble {
-    // todo
+
+class CDataTypeInt : public DataType {
+    public:
+        CDataTypeInt() {}
+        size_t getSize() const override { return 4; }
+        bool operator==(const DataType & type) const override {
+            return nullptr != dynamic_cast<const CDataTypeInt*>(&type);
+        }
+        void printTo(ostream & out) const override {
+            out << "int";
+        }
+        virtual DataType * clone() const override { return new CDataTypeInt(); };
 };
-class CDataTypeEnum {
-    // todo
+class CDataTypeDouble : public DataType {
+    public:
+        CDataTypeDouble() {}
+        size_t getSize() const override { return 8; }
+        bool operator==(const DataType & type) const override {
+            return nullptr != dynamic_cast<const CDataTypeDouble*>(&type);
+        }
+        void printTo(ostream & out) const override {
+            out << "double";
+        }
+        virtual DataType * clone() const override { return new CDataTypeDouble(); };
 };
-class CDataTypeStruct {
-    // todo
+class CDataTypeEnum : public DataType {
+    private:
+        vector<string> values;
+    public:
+        CDataTypeEnum() {}
+        CDataTypeEnum(const CDataTypeEnum & src) : values(src.values) {}
+        CDataTypeEnum & add(string str) {
+            for (const string & name : values)
+                if (str == name) throw invalid_argument("Duplicate enum value: " + str);
+            values.emplace_back(str);
+            return *this;
+        }
+        size_t getSize() const override { return 4; }
+        bool operator==(const DataType & type) const override {
+            const CDataTypeEnum * casted;
+            if (nullptr == (casted = dynamic_cast<const CDataTypeEnum*>(&type)))
+                return false;
+            return values == casted -> values;
+        }
+        void printTo(ostream & out) const override {
+            out << "enum {";
+            bool isFirst = true;
+            for (const string & str : values) {
+                if (isFirst) isFirst = false; else out << ", ";
+                out << str;
+            }
+            out << "}";
+        }
+        virtual DataType * clone() const override { return new CDataTypeEnum(*this); };
 };
+class CDataTypeStruct : public DataType {
+    private:
+        vector<pair<string, unique_ptr<DataType>>> data;
+    public:
+        CDataTypeStruct() {}
+        CDataTypeStruct(const CDataTypeStruct & src) {
+            for (const auto & pair : src.data)
+                data.push_back(make_pair(pair.first, unique_ptr<DataType>(pair.second -> clone())));
+        }
+        CDataTypeStruct & addField(string str, const DataType & type) {
+            for (const auto & [name, any] : data) {
+                if (name == str) throw invalid_argument("Duplicate field: " + str);
+            }
+            data.emplace_back(make_pair(str, type.clone()));
+            return *this;
+        }
+        const DataType & field(string str) const {
+            for (const auto & [name, type] : data) {
+                if (name == str) return *type;
+            }
+            throw invalid_argument("Unknown field: " + str);
+        }
+        size_t getSize() const override {
+            size_t size = 0;
+            for (const auto & [name, type] : data)
+                size += type -> getSize();
+            return size;
+        }
+        bool operator==(const DataType & type) const override {
+            const CDataTypeStruct * casted;
+            if (nullptr == (casted = dynamic_cast<const CDataTypeStruct*>(&type)))
+                return false;
+            const vector<pair<string, unique_ptr<DataType>>>& other = casted -> data;
+            if (data.size() != other.size()) return false;
+            for (size_t i = 0; i < data.size(); i++)
+                if (*data[i].second != *other[i].second) return false;
+            return true;
+        }
+        void printTo(ostream & out) const override {
+            out << "struct { ";
+            for (const auto & [name, type] : data) {
+                type -> printTo(out);
+                out << " " << name << "; ";
+            }
+            out << "}";
+        }
+        virtual DataType * clone() const override { return new CDataTypeStruct(*this); };
+};
+
+ostream & operator<<(ostream & out, const DataType & data) {
+    data.printTo(out);
+    return out;
+}
+
 #ifndef __PROGTEST__
-static bool whitespaceMatch(const string & a,
-        const string & b){
-    // todo
-    return true;
+static bool whitespaceMatch(const string & a, const string & b){
+    cout << "A\n" << a << endl;
+    cout << "B\n" << b << endl;
+    cout << setw(80) << setfill('-') << "" << endl;
+    auto aItr = a.begin();
+    auto bItr = b.begin();
+    while (true) {
+        while (aItr != a.end() && iswspace(*aItr)) aItr++;
+        while (bItr != b.end() && iswspace(*bItr)) bItr++;
+        if (aItr == a.end() && bItr == b.end()) return true;
+        if (aItr == a.end() || bItr == b.end()) return false;
+        if (*aItr != *bItr) return false;
+        aItr++;
+        bItr++;
+    }
 }
 template <typename T_>
-static bool whitespaceMatch(const T_ & x,
-        const string & ref) {
+static bool whitespaceMatch(const T_ & x, const string & ref) {
     ostringstream oss;
     oss << x;
     return whitespaceMatch(oss.str (), ref);
