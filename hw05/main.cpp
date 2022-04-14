@@ -123,6 +123,8 @@ namespace cmp {
 class CSupermarket {
     // stores item in the way optimal for sell() method
     MainMap mMap;
+    // holds mismatched keys
+    unordered_multimap<string, shared_ptr<string>> mKeys;
     // stores item in the way optimal for expired() method
     set<StoreItem, cmp::DateComplexCmpInv> mSet;
     public:
@@ -166,6 +168,7 @@ class CSupermarket {
      * @return true if an item was found, false otherwise */
     inline bool findItem(const string & name, MainMap::iterator & mapOut);
     /** Checks if two names are the same except one character
+     * Not used anymore, left for nostalgia reasons
      * @param str1 first string to compare
      * @param str2 second string to compare
      * @return true if the strings match */
@@ -184,6 +187,28 @@ class CSupermarket {
      * @param count the number of the item remaining in the storage */
     void updateInSet(const string & name, const CDate & date, int count);
 
+    /** Inserts keys parts into separate index for fast spell error correction
+     * uses mKey map
+     * cannot be called for already inserted item, otherwise diplicities may ocure!
+     * @param name name of newly added item */
+    void insertMapKeys(const string & name);
+    /** Removes keys inserted earlier by insertMapKeys() method for the same name
+     * called when the last item of the name was removed
+     * @param name name of newly added item */
+    void removeMapKeys(const string & name);
+    /** Tries to match searched name against keys already stored
+     * @param search name to search for
+     * @param out real product name, used as optional output. May be changed
+     *        even if the method returs false!
+     * @return true if only one exact match occured, false otherwise */
+    bool findInKeys(const string & search, string & out) const;
+    /** Creates list of keys used later above.
+     * the keys are the name with one character replaced by '\0'
+     * for ahoj this method returns {0hoj, a0oj, ah0j, aho0}
+     * @param name name to generate keys for
+     * @return list of keys for the name */
+    vector<string> createKeys(const string & name) const;
+
     public:
     /** Create a list of items that would be expired on a date given
      * @param date the date for which we want to find the expired items
@@ -193,6 +218,9 @@ class CSupermarket {
     /** Prints map content, ends with '\n' char
      * @param out stream to print into */
     void printMap(ostream & out = cout) const;
+    /** Prints keys content, ends with '\n' char
+     * @param out stream to print into */
+    void printKeys(ostream & out = cout) const;
     /** Prints set content, ends with '\n' char
      * @param out stream to print into */
     void printSet(ostream & out = cout) const;
@@ -273,6 +301,7 @@ CSupermarket & CSupermarket::store(string name, const CDate & expiryDate, int co
         DateCountMap subMap;
         subMap.insert(make_pair(expiryDate, count));
         mMap.insert(make_pair(name, subMap));
+        insertMapKeys(name);
     } else {
         DateCountMap & subMap = mapItr -> second;
         auto subItr = subMap.find(expiryDate);
@@ -340,24 +369,20 @@ inline void CSupermarket::cleanUpMap(list<AdvancedItem> & data) {
     for (auto & [listItr, mapItr] : data)
         iterators.insert(mapItr);
     for (MainMap::iterator mapItr : iterators)
-        if (mapItr -> second.empty())
+        if (mapItr -> second.empty()) {
+            removeMapKeys(mapItr -> first);
             mMap.erase(mapItr);
+        }
 }
 inline bool CSupermarket::findItem(const string & name, MainMap::iterator & mapOut) {
     const auto mapItr = mMap.find(name);
     if (mapItr != mMap.end()) {
         mapOut = mapItr;
     } else {
-        bool anyFound = false;
-        for (auto subItr = mMap.begin(); subItr != mMap.end(); subItr++) {
-            const string & key = subItr -> first;
-            if (nameMatch(name, key)) {
-                if (anyFound) return false;
-                anyFound = true;
-                mapOut = subItr;
-            }
-        }
-        if (!anyFound) return false;
+        string realName;
+        if (!findInKeys(name, realName)) return false;
+        // key must exists
+        mapOut = mMap.find(realName);
     }
     return true;
 }
@@ -393,6 +418,46 @@ void CSupermarket::updateInSet(const string & name, const CDate & date, int coun
     }
     mSet.erase(setItr);
 }
+void CSupermarket::insertMapKeys(const string & name) {
+    shared_ptr<string> copy = shared_ptr<string>(new string(name));
+    vector<string> keys = createKeys(name);
+    for (string & key : keys)
+        mKeys.emplace(move(key), copy);
+}
+void CSupermarket::removeMapKeys(const string & name) {
+    vector<string> keys = createKeys(name);
+    for (const string & key : keys) {
+        auto range = mKeys.equal_range(key);
+        for (auto it = range.first; it != range.second; ++it) {
+            if (*(it -> second) == name) {
+                mKeys.erase(it);
+                break;
+            }
+        }
+    }
+}
+bool CSupermarket::findInKeys(const string & search, string & out) const {
+    vector<string> keys = createKeys(search);
+    bool anyFound = false;
+    for (const string & key : keys) {
+        auto range = mKeys.equal_range(key);
+        auto distance = std::distance(range.first, range.second);
+        if (distance == 1) {
+            if (anyFound) return false; else anyFound = true;
+            out = *(range.first -> second);
+        } else if (distance > 1) return false;
+    }
+    return anyFound;
+}
+vector<string> CSupermarket::createKeys(const string & name) const {
+    vector<string> data;
+    for (size_t i = 0; i < name.length(); i++) {
+        string key = string(name);
+        key.at(i) = '\0';
+        data.emplace_back(move(key));
+    }
+    return data;
+}
 
 ProdList CSupermarket::expired(const CDate & date) const {
     unordered_map<string, int> expired;
@@ -415,18 +480,31 @@ ProdList CSupermarket::expired(const CDate & date) const {
     return outList;
 }
 void CSupermarket::printMap(ostream & out) const {
-    cout << "Map" << endl;
+    out << "Map" << endl;
     for (const auto & [name, data] : mMap) {
-        cout << "+ " << name << endl;
+        out << "+ " << name << endl;
         for (const auto & [date, count] : data) {
-            cout << "> " << date << " - " << count << endl;
+            out << "> " << date << " - " << count << endl;
         }
     }
 }
+void CSupermarket::printKeys(ostream & out) const {
+    out << "Keys" << endl;
+    for (auto itr = mKeys.begin(); itr != mKeys.end(); ) {
+        const auto curr = itr;
+        out << "* " << itr -> first << " - ";
+        while (itr != mKeys.end() && itr->first == curr->first) {
+            if (itr != curr) out << ", ";
+            out  << *(itr -> second);
+            ++itr;
+        }
+        out << endl;
+    }
+}
 void CSupermarket::printSet(ostream & out) const {
-    cout << "Set" << endl;
+    out << "Set" << endl;
     for (const StoreItem & item : mSet) {
-        cout << "/ " << item << endl;
+        out << "/ " << item << endl;
     }
 }
 
@@ -575,6 +653,9 @@ int main(void) {
         .store("ccccd", CDate(2019, 6, 9 ), 100 )
         .store("dcccc", CDate(2019, 2, 14 ), 100 );
     printLine("Stored 2x ccccb, dcccc");
+    s.printMap();
+    s.printKeys();
+    s.printSet();
 
     list<pair<string,int>> l15 { { "ccccc", 10 } };
     printLine("Sell 15");
