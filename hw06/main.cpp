@@ -31,8 +31,19 @@ class DataType {
         bool operator!=(const DataType & type) const {
             return !(*this == type);
         }
+        operator string() const {
+            string builder;
+            toString(builder);
+            return builder;
+        }
+        virtual const DataType& field(string str) const {
+            throw invalid_argument("Cannot use field() for type: "s + static_cast<string>(*this));
+        };
+        virtual const DataType& element() const {
+            throw invalid_argument("Cannot use element() for type: "s + static_cast<string>(*this));
+        };
         virtual size_t getSize() const = 0;
-        virtual void printTo(ostream & out) const = 0;
+        virtual void toString(string & builder) const = 0;
         virtual DataType * clone() const = 0;
 };
 
@@ -43,9 +54,9 @@ class CDataTypeInt : public DataType {
         bool operator==(const DataType & type) const override {
             return nullptr != dynamic_cast<const CDataTypeInt*>(&type);
         }
-        void printTo(ostream & out) const override {
-            out << "int";
-        }
+        void toString(string & builder) const override {
+            builder = "int " + builder;
+        };
         virtual DataType * clone() const override { return new CDataTypeInt(); };
 };
 class CDataTypeDouble : public DataType {
@@ -55,9 +66,9 @@ class CDataTypeDouble : public DataType {
         bool operator==(const DataType & type) const override {
             return nullptr != dynamic_cast<const CDataTypeDouble*>(&type);
         }
-        void printTo(ostream & out) const override {
-            out << "double";
-        }
+        void toString(string & builder) const override {
+            builder = "double " + builder;
+        };
         virtual DataType * clone() const override { return new CDataTypeDouble(); };
 };
 class CDataTypeEnum : public DataType {
@@ -72,23 +83,80 @@ class CDataTypeEnum : public DataType {
             values.emplace_back(str);
             return *this;
         }
-        size_t getSize() const override { return 4; }
         bool operator==(const DataType & type) const override {
             const CDataTypeEnum * casted;
             if(nullptr ==(casted = dynamic_cast<const CDataTypeEnum*>(&type)))
                 return false;
             return values == casted -> values;
         }
-        void printTo(ostream & out) const override {
-            out << "enum {";
+        size_t getSize() const override { return 4; }
+        void toString(string & builder) const override {
+            string buff = "enum { ";
             bool isFirst = true;
             for(const string & str : values) {
-                if(isFirst) isFirst = false; else out << ", ";
-                out << str;
+                if(isFirst) isFirst = false; else buff += ", ";
+                buff += str;
             }
-            out << "}";
-        }
+            buff += " }";
+            builder = buff + builder;
+        };
         virtual DataType * clone() const override { return new CDataTypeEnum(*this); };
+};
+class CDataTypeArray : public DataType {
+    private:
+        size_t size;
+        unique_ptr<DataType> type;
+    public:
+        CDataTypeArray(size_t s, const DataType & t)
+            : size(s), type(unique_ptr<DataType>(t.clone())) {}
+        CDataTypeArray(const CDataTypeArray & src)
+            : size(src.size), type(unique_ptr<DataType>(src.type -> clone())) {}
+        size_t getSize() const override {
+            return size * type -> getSize();
+        }
+        const DataType& element() const override { return *type; }
+        bool operator==(const DataType & t) const override {
+            const CDataTypeArray * casted;
+            if (nullptr == (casted = dynamic_cast<const CDataTypeArray*>(&t)))
+                return false;
+            if (size != casted -> size) return false;
+            if (*type != *(casted -> type)) return false;
+            return true;
+        }
+        void toString(string & builder) const override {
+            builder += "[" + to_string(size) + "]";
+            type -> toString(builder);
+        }
+        virtual DataType * clone() const override { return new CDataTypeArray(*this); };
+        friend class CDataTypePtr;
+};
+class CDataTypePtr : public DataType {
+    private:
+        unique_ptr<DataType> type;
+    public:
+        CDataTypePtr(const DataType & t)
+            : type(unique_ptr<DataType>(t.clone())) {}
+        CDataTypePtr(const CDataTypePtr & src)
+            : type(unique_ptr<DataType>(src.type -> clone())) {}
+        bool operator==(const DataType & t) const override {
+            const CDataTypePtr * casted;
+            if (nullptr == (casted = dynamic_cast<const CDataTypePtr*>(&t)))
+                return false;
+            return *type == *(casted -> type);
+        }
+        size_t getSize() const override { return 8; }
+        const DataType& element() const override { return *type; }
+        void toString(string & builder) const override {
+            const CDataTypeArray * arr;
+            if (nullptr != (arr = dynamic_cast<const CDataTypeArray*>(&*type))) {
+                builder = "(*" + builder + ")[" + to_string(arr -> size) + "]";
+                type -> element().toString(builder);
+            } else {
+                builder = "*" + builder;
+                type -> toString(builder);
+            }
+        }
+        virtual DataType * clone() const override { return new CDataTypePtr(*this); };
 };
 class CDataTypeStruct : public DataType {
     private:
@@ -106,7 +174,17 @@ class CDataTypeStruct : public DataType {
             data.emplace_back(make_pair(str, type.clone()));
             return *this;
         }
-        const DataType & field(string str) const {
+        bool operator==(const DataType & type) const override {
+            const CDataTypeStruct * casted;
+            if(nullptr ==(casted = dynamic_cast<const CDataTypeStruct*>(&type)))
+                return false;
+            const vector<pair<string, unique_ptr<DataType>>>& other = casted -> data;
+            if(data.size() != other.size()) return false;
+            for(size_t i = 0; i < data.size(); i++)
+                if(*data[i].second != *other[i].second) return false;
+            return true;
+        }
+        const DataType & field(string str) const override {
             for(const auto & [name, type] : data) {
                 if(name == str) return *type;
             }
@@ -118,29 +196,33 @@ class CDataTypeStruct : public DataType {
                 size += type -> getSize();
             return size;
         }
-        bool operator==(const DataType & type) const override {
-            const CDataTypeStruct * casted;
-            if(nullptr ==(casted = dynamic_cast<const CDataTypeStruct*>(&type)))
-                return false;
-            const vector<pair<string, unique_ptr<DataType>>>& other = casted -> data;
-            if(data.size() != other.size()) return false;
-            for(size_t i = 0; i < data.size(); i++)
-                if(*data[i].second != *other[i].second) return false;
-            return true;
-        }
-        void printTo(ostream & out) const override {
-            out << "struct { ";
+        void toString(string & builder) const override {
+            string buff = "struct {\n";
             for(const auto & [name, type] : data) {
-                type -> printTo(out);
-                out << " " << name << "; ";
+                const CDataTypeArray * arr;
+                const CDataTypePtr * ptr;
+                if (nullptr != (arr = dynamic_cast<const CDataTypeArray*>(&*type))) {
+                    string tmp = name;
+                    type -> toString(tmp);
+                    buff += tmp + ";\n";
+                } else if (nullptr != (ptr = dynamic_cast<const CDataTypePtr*>(&*type))) {
+                    string tmp = name;
+                    type -> toString(tmp);
+                    buff += tmp + ";\n";
+                } else {
+                    string tmp;
+                    type -> toString(tmp);
+                    buff += tmp + " " + name + ";\n";
+                }
             }
-            out << "}";
+            buff += "}";
+            builder = buff + builder;
         }
         virtual DataType * clone() const override { return new CDataTypeStruct(*this); };
 };
 
 ostream & operator<<(ostream & out, const DataType & data) {
-    data.printTo(out);
+    out << static_cast<string>(data);
     return out;
 }
 
