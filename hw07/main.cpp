@@ -52,9 +52,15 @@ class CIndex {
         return indexes;
     }
 
-    inline bool equal(const typename T::value_type & v1, const typename T::value_type & v2) const {
-        return !cmp(v1, v2) && !cmp(v2, v1);
+    inline bool equal(const char v1, const char v2) const {
+        if constexpr (is_same_v<C, less<char>>)
+            return v1 == v2;
+        else return equal<char>(v1, v2);
     }
+    template<typename V>
+        inline bool equal(const V & v1, const V & v2) const {
+            return !cmp(v1, v2) && !cmp(v2, v1);
+        }
 };
 
 #ifndef __PROGTEST__
