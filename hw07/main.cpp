@@ -28,39 +28,99 @@ typedef set<size_t> NumSet;
 
 template <typename T, typename C = less<typename T::value_type>>
 class CIndex {
-    T data;
-    C cmp;
+    private:
+        T data;
+        C cmp;
+        vector<size_t> hashes;
     public:
-    CIndex(const T & d) : data(d), cmp(C()) {}
-    CIndex(const T & d, const C & c) : data(d), cmp(c) {}
-    NumSet search(const T & phrase) const {
-        NumSet indexes;
-        if (phrase.size() > data.size()) return indexes;
-
-        for (auto itr = data.begin(); itr != data.end(); ++itr) {
-            auto dItr = itr;
-            auto pItr = phrase.begin();
-            while (pItr != phrase.end()
-                    && dItr != data.end()
-                    && equal(*dItr, *pItr)) {
-                dItr++;
-                pItr++;
+        CIndex(const T & d) : data(d), cmp(C()) {
+            init();
+        }
+        CIndex(const T & d, const C & c) : data(d), cmp(c) {
+            init();
+        }
+        inline NumSet search(const T & phrase) const {
+            if constexpr(is_same_v<T, string> && is_same_v<C, less<char>>)
+                return searchString(phrase);
+            else return searchGeneral(phrase);
+        }
+    private:
+        void init() {
+            if constexpr(is_same_v<T, string> && is_same_v<C, less<char>>)
+                createHashes(data);
+        }
+        inline void createHashes(const string & str) {
+            size_t hash = 0;
+            hashes.emplace_back(0);
+            for (const char c : str) {
+                hash += hashForChar(c);
+                hashes.emplace_back(hash);
+                // cout << "Hash: " << c << " \t" << hash << endl;
             }
-            if (pItr == phrase.end()) indexes.emplace(distance(data.begin(), itr));
+        }
+        inline static size_t createSingleHash(const string & str) {
+            size_t hash = 0;
+            for (const char c : str)
+                hash += hashForChar(c);
+            return hash;
+        }
+        static inline size_t hashForChar(const char c) {
+            return c * (c % 8 + 1L);
+        }
+        NumSet searchString(const string & phrase) const {
+            NumSet indexes;
+            if (phrase.size() > data.size()) return indexes;
+            const size_t pHash = createSingleHash(phrase);
+            const size_t pLen = phrase.size();
+
+            // cout << "\nSearching in \"" << data << "\" for \"" << phrase << "\"" << endl;
+            // cout << "pHash: " << pHash << endl;
+            for (size_t i = 0; i < data.size() - max(pLen, (size_t)1) + 1; i++) {
+                /*cout << "Hash: "
+                    << hashes[i + pLen] << " - "
+                    << hashes[i] << " = "
+                    << (hashes[i + pLen] - hashes[i]) << endl;*/
+                if (hashes[i + pLen] - hashes[i] == pHash) {
+                    size_t j = 0;
+                    for (; j < pLen; j++) {
+                        if (data[i + j] != phrase[j])
+                            break;
+                    }
+                    if (j == pLen) indexes.emplace(i);
+                }
+            }
+
+            return indexes;
         }
 
-        return indexes;
-    }
+        NumSet searchGeneral(const T & phrase) const {
+            NumSet indexes;
+            if (phrase.size() > data.size()) return indexes;
 
-    inline bool equal(const char v1, const char v2) const {
-        if constexpr (is_same_v<C, less<char>>)
-            return v1 == v2;
-        else return equal<char>(v1, v2);
-    }
-    template<typename V>
-        inline bool equal(const V & v1, const V & v2) const {
-            return !cmp(v1, v2) && !cmp(v2, v1);
+            for (auto itr = data.begin(); itr != data.end(); ++itr) {
+                auto dItr = itr;
+                auto pItr = phrase.begin();
+                while (pItr != phrase.end()
+                        && dItr != data.end()
+                        && equal(*dItr, *pItr)) {
+                    dItr++;
+                    pItr++;
+                }
+                if (pItr == phrase.end()) indexes.emplace(distance(data.begin(), itr));
+            }
+
+            return indexes;
         }
+
+        inline bool equal(const char v1, const char v2) const {
+            if constexpr (is_same_v<C, less<char>>)
+                return v1 == v2;
+            else return equal<char>(v1, v2);
+        }
+        template<typename V>
+            inline bool equal(const V & v1, const V & v2) const {
+                return !cmp(v1, v2) && !cmp(v2, v1);
+            }
 };
 
 #ifndef __PROGTEST__
@@ -86,6 +146,18 @@ void printSet(const NumSet & set) {
 }
 
 int main(void){
+    CIndex <string> i0("abcabcabc" );
+    set<size_t> m0 = i0.search("abcabcabc" );
+    assert( m0 ==(set<size_t> { 0 }));
+    set<size_t> m1 = i0.search("abcabcab" );
+    assert( m1 ==(set<size_t> { 0 }));
+    set<size_t> m2 = i0.search("abcabca" );
+    assert( m2 ==(set<size_t> { 0 }));
+    set<size_t> m3 = i0.search("abcabcabca" );
+    assert( m3 ==(set<size_t> { }));
+    set<size_t> m4 = i0.search("abcabcabx" );
+    assert( m4 ==(set<size_t> { }));
+
     CIndex <string> t0("abcabcabc" );
     set<size_t> r0 = t0.search("a" );
     assert( r0 ==(set<size_t> { 0, 3, 6 }));
