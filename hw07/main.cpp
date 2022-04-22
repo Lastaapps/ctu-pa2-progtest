@@ -26,12 +26,12 @@ using namespace std;
 
 typedef set<size_t> NumSet;
 
-template <typename T, typename C = less<T::value_type>>
+template <typename T, typename C = less<typename T::value_type>>
 class CIndex {
     T data;
     C cmp;
     public:
-    CIndex(const T & d) : data(d), cmp(less<T::value_type>()) {}
+    CIndex(const T & d) : data(d), cmp(C()) {}
     CIndex(const T & d, const C & c) : data(d), cmp(c) {}
     NumSet search(const T & phrase) const {
         NumSet indexes;
@@ -52,12 +52,9 @@ class CIndex {
         return indexes;
     }
 
-    template<typename V>
-        inline bool equal(const V & v1, const V & v2) const {
-            // cout << "Cmp: " << v1 << " x " << v2 << endl;
-            // cout << "Res: " << cmp(v1, v2) << " x " << cmp(v2, v1) << endl;
-            return !cmp(v1, v2) && !cmp(v2, v1);
-        }
+    inline bool equal(const typename T::value_type & v1, const typename T::value_type & v2) const {
+        return !cmp(v1, v2) && !cmp(v2, v1);
+    }
 };
 
 #ifndef __PROGTEST__
@@ -154,6 +151,8 @@ int main(void){
     assert( r26 ==(set<size_t> { 2, 5 }));
 
     cout << "All tests passed!" << endl;
+#ifdef BLBOST
+#endif
     return 0;
 }
 #endif /* __PROGTEST__ */
