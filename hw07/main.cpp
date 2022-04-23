@@ -80,11 +80,17 @@ class CIndex {
             if (phrase.size() > data.size()) return indexes;
             const size_t pLen = phrase.size();
             const vector<size_t> failFun = createFailFunction(phrase);
+            const size_t pHash = createSingleHash(phrase);
+            const size_t pMod = moduloPow(MULTIPLY, pLen, MODULO);
 
-            // cout << "\nSearching in \"" << data << "\" for \"" << phrase << "\"" << endl;
-            // cout << "pHash: " << pHash << endl;
             size_t i = 0, j = 0;
+            // size_t cycles = 0;
             while (i < data.size() - max(pLen, (size_t)1) + 1) {
+                if (j == 0 && (hashes[i] * pMod + pHash) % MODULO != hashes[i + pLen]) {
+                    i++;
+                    continue;
+                }
+                // cycles++;
                 if (j == pLen) {
                     indexes.emplace(i);
                     i++;
@@ -98,30 +104,8 @@ class CIndex {
                         i -= j;
                     }
                 }
-
-                /*cout << "Hash: "
-                    << hashes[i + pLen] << " - "
-                    << hashes[i] << " = "
-                    << (hashes[i + pLen] - hashes[i]) << endl;*/
-                /*
-                
-            const size_t pHash = createSingleHash(phrase);
-            const size_t pMod = moduloPow(MULTIPLY, pLen, MODULO);
-
-                if ((hashes[i] * pMod + pHash) % MODULO == hashes[i + pLen]) {
-                    size_t j = 0;
-                    while (j < pLen) {
-                        if (data[i + j] != phrase[j])
-                            break;
-                    }
-                    if (j == pLen) {
-                        indexes.emplace(i);
-                        i += failFun[j - 1];
-                    } else {
-                        i += failFun[j - 1];
-                    }
-                }*/
             }
+            // cout << "Done " << cycles << " / " << data.size() << " - " << ((double) cycles / data.size()) << endl;
 
             return indexes;
         }
@@ -137,6 +121,8 @@ class CIndex {
             for (size_t i = 1; i < len;) {
                 if (str[i] == str[pos]) {
                     toReturn[++i] = ++pos + 1;
+                } else if (pos > 0) {
+                    pos = toReturn[pos] - 1;
                 } else {
                     pos = 0;
                     toReturn[++i] = 1;
