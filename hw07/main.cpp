@@ -45,6 +45,8 @@ class CIndex {
             else return searchGeneral(phrase);
         }
     private:
+        static constexpr size_t MODULO = 131;
+        static constexpr size_t MULTIPLY = 128;
         void init() {
             if constexpr(is_same_v<T, string> && is_same_v<C, less<char>>)
                 createHashes(data);
@@ -52,26 +54,32 @@ class CIndex {
         inline void createHashes(const string & str) {
             size_t hash = 0;
             hashes.emplace_back(0);
+            // cout << "Hash: " << "-  \t0" << endl;
             for (const char c : str) {
-                hash += hashForChar(c);
+                hash *= MULTIPLY;
+                hash += c - 'a';
+                hash %= MODULO;
                 hashes.emplace_back(hash);
                 // cout << "Hash: " << c << " \t" << hash << endl;
             }
         }
         inline static size_t createSingleHash(const string & str) {
             size_t hash = 0;
-            for (const char c : str)
-                hash += hashForChar(c);
+            // cout << "Hash: " << "-  \t0" << endl;
+            for (const char c : str) {
+                hash *= MULTIPLY;
+                hash += c - 'a';
+                hash %= MODULO;
+                // cout << "Hash: " << c << " \t" << hash << endl;
+            }
             return hash;
-        }
-        static inline size_t hashForChar(const char c) {
-            return c * (c % 8 + 1L);
         }
         NumSet searchString(const string & phrase) const {
             NumSet indexes;
             if (phrase.size() > data.size()) return indexes;
             const size_t pHash = createSingleHash(phrase);
             const size_t pLen = phrase.size();
+            const size_t pMod = moduloPow(MULTIPLY, pLen, MODULO);
 
             // cout << "\nSearching in \"" << data << "\" for \"" << phrase << "\"" << endl;
             // cout << "pHash: " << pHash << endl;
@@ -80,7 +88,7 @@ class CIndex {
                     << hashes[i + pLen] << " - "
                     << hashes[i] << " = "
                     << (hashes[i + pLen] - hashes[i]) << endl;*/
-                if (hashes[i + pLen] - hashes[i] == pHash) {
+                if ((hashes[i] * pMod + pHash) % MODULO == hashes[i + pLen]) {
                     size_t j = 0;
                     for (; j < pLen; j++) {
                         if (data[i + j] != phrase[j])
@@ -121,7 +129,22 @@ class CIndex {
             inline bool equal(const V & v1, const V & v2) const {
                 return !cmp(v1, v2) && !cmp(v2, v1);
             }
+
+        static size_t moduloPow(size_t what, size_t power, const size_t mod) {
+            size_t res = 1;
+            while (power > 0) {
+                if (power & 1uL) {
+                    res *= what;
+                    res %= mod;
+                }
+                what *= what;
+                what %= mod;
+                power >>= 1;
+            }
+            return res;
+        }
 };
+
 
 #ifndef __PROGTEST__
 class CStrComparator {
@@ -146,6 +169,24 @@ void printSet(const NumSet & set) {
 }
 
 int main(void){
+    /*
+    assert(moduloPow(2, 0, -1) ==  1); 
+    assert(moduloPow(2, 1, -1) ==  2); 
+    assert(moduloPow(2, 2, -1) ==  4); 
+    assert(moduloPow(2, 3, -1) ==  8); 
+    assert(moduloPow(2, 4, -1) == 16); 
+    assert(moduloPow(2, 5, -1) == 32); 
+    assert(moduloPow(2, 6, -1) == 64); 
+
+    assert(moduloPow(2, 0, 13) ==  1); 
+    assert(moduloPow(2, 1, 13) ==  2); 
+    assert(moduloPow(2, 2, 13) ==  4); 
+    assert(moduloPow(2, 3, 13) ==  8); 
+    assert(moduloPow(2, 4, 13) ==  3); 
+    assert(moduloPow(2, 5, 13) ==  6); 
+    assert(moduloPow(2, 6, 13) == 12);
+    */
+
     CIndex <string> i0("abcabcabc" );
     set<size_t> m0 = i0.search("abcabcabc" );
     assert( m0 ==(set<size_t> { 0 }));
