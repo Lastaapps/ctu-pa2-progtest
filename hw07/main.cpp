@@ -74,31 +74,80 @@ class CIndex {
             }
             return hash;
         }
+        // KMP implementation inspired by lectures and Wikipedia pseudocode
         NumSet searchString(const string & phrase) const {
             NumSet indexes;
             if (phrase.size() > data.size()) return indexes;
-            const size_t pHash = createSingleHash(phrase);
             const size_t pLen = phrase.size();
-            const size_t pMod = moduloPow(MULTIPLY, pLen, MODULO);
+            const vector<size_t> failFun = createFailFunction(phrase);
 
             // cout << "\nSearching in \"" << data << "\" for \"" << phrase << "\"" << endl;
             // cout << "pHash: " << pHash << endl;
-            for (size_t i = 0; i < data.size() - max(pLen, (size_t)1) + 1; i++) {
+            size_t i = 0, j = 0;
+            while (i < data.size() - max(pLen, (size_t)1) + 1) {
+                if (j == pLen) {
+                    indexes.emplace(i);
+                    i++;
+                    j = 0;
+                } else if (data[i + j] == phrase[j]) {
+                    j++;
+                } else {
+                    if (j == 0) i++; else {
+                        i += j;
+                        j = failFun[j] - 1;
+                        i -= j;
+                    }
+                }
+
                 /*cout << "Hash: "
                     << hashes[i + pLen] << " - "
                     << hashes[i] << " = "
                     << (hashes[i + pLen] - hashes[i]) << endl;*/
+                /*
+                
+            const size_t pHash = createSingleHash(phrase);
+            const size_t pMod = moduloPow(MULTIPLY, pLen, MODULO);
+
                 if ((hashes[i] * pMod + pHash) % MODULO == hashes[i + pLen]) {
                     size_t j = 0;
-                    for (; j < pLen; j++) {
+                    while (j < pLen) {
                         if (data[i + j] != phrase[j])
                             break;
                     }
-                    if (j == pLen) indexes.emplace(i);
-                }
+                    if (j == pLen) {
+                        indexes.emplace(i);
+                        i += failFun[j - 1];
+                    } else {
+                        i += failFun[j - 1];
+                    }
+                }*/
             }
 
             return indexes;
+        }
+
+        // normal -1 starting impl is replaced by this one wiht all
+        // the positons increated by 1
+        vector<size_t> createFailFunction(const string & str) const {
+            const size_t len = str.size();
+            vector<size_t> toReturn = { 0, 1 };
+            toReturn.resize(str.size() + 1);
+            size_t pos = 0;
+            
+            for (size_t i = 1; i < len;) {
+                if (str[i] == str[pos]) {
+                    toReturn[++i] = ++pos + 1;
+                } else {
+                    pos = 0;
+                    toReturn[++i] = 1;
+                }
+            }
+            /*cout << ' ' << str << endl;
+            for (auto i : toReturn)
+                cout << i;
+            cout << endl;*/
+
+            return toReturn;
         }
 
         NumSet searchGeneral(const T & phrase) const {
@@ -188,6 +237,8 @@ int main(void){
     */
 
     CIndex <string> i0("abcabcabc" );
+    i0.search("cococay");
+    i0.search("abcdabd");
     set<size_t> m0 = i0.search("abcabcabc" );
     assert( m0 ==(set<size_t> { 0 }));
     set<size_t> m1 = i0.search("abcabcab" );
