@@ -76,32 +76,29 @@ class CIndex {
         }
         // KMP implementation inspired by lectures and Wikipedia pseudocode
         NumSet searchString(const string & phrase) const {
-            NumSet indexes;
-            if (phrase.size() > data.size()) return indexes;
             const size_t pLen = phrase.size();
+            const size_t dLen = data.size();
+            if (pLen > dLen) return NumSet();
+            if (pLen == 0) return createAllIndexes(dLen);
+            NumSet indexes;
             const vector<size_t> failFun = createFailFunction(phrase);
-            const size_t pHash = createSingleHash(phrase);
-            const size_t pMod = moduloPow(MULTIPLY, pLen, MODULO);
 
             size_t i = 0, j = 0;
             // size_t cycles = 0;
-            while (i < data.size() - max(pLen, (size_t)1) + 1) {
-                if (j == 0 && (hashes[i] * pMod + pHash) % MODULO != hashes[i + pLen]) {
-                    i++;
-                    continue;
-                }
+            while (i < dLen) {
                 // cycles++;
-                if (j == pLen) {
-                    indexes.emplace(i);
+                if (data[i] == phrase[j]) {
                     i++;
-                    j = 0;
-                } else if (data[i + j] == phrase[j]) {
                     j++;
+                    if (j >= pLen) {
+                        indexes.emplace(i - j);
+                        j = failFun[j];
+                    }
                 } else {
-                    if (j == 0) i++; else {
-                        i += j;
-                        j = failFun[j] - 1;
-                        i -= j;
+                    j = failFun[j];
+                    if (j == (size_t)-1) {
+                        i++;
+                        j++;
                     }
                 }
             }
@@ -110,22 +107,28 @@ class CIndex {
             return indexes;
         }
 
-        // normal -1 starting impl is replaced by this one wiht all
-        // the positons increated by 1
-        vector<size_t> createFailFunction(const string & str) const {
+        inline NumSet createAllIndexes(const size_t len) const {
+            NumSet s;
+            for (size_t i = 0; i < len; i++)
+                s.emplace(i);
+            return s;
+        }
+
+        // computes fail function for the str given
+        inline vector<size_t> createFailFunction(const string & str) const {
             const size_t len = str.size();
-            vector<size_t> toReturn = { 0, 1 };
+            vector<size_t> toReturn = { (size_t)-1, 0 };
             toReturn.resize(str.size() + 1);
             size_t pos = 0;
-            
+
             for (size_t i = 1; i < len;) {
                 if (str[i] == str[pos]) {
-                    toReturn[++i] = ++pos + 1;
+                    toReturn[++i] = ++pos;
                 } else if (pos > 0) {
-                    pos = toReturn[pos] - 1;
+                    pos = toReturn[pos];
                 } else {
                     pos = 0;
-                    toReturn[++i] = 1;
+                    toReturn[++i] = 0;
                 }
             }
             /*cout << ' ' << str << endl;
