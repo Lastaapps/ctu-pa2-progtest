@@ -123,7 +123,7 @@ namespace cmp {
 class CSupermarket {
     // stores item in the way optimal for sell() method
     MainMap mMap;
-    // holds mismatched keys
+    // holds modified keys
     unordered_multimap<string, shared_ptr<string>> mKeys;
     // stores item in the way optimal for expired() method
     set<StoreItem, cmp::DateComplexCmpInv> mSet;
@@ -308,6 +308,7 @@ CSupermarket & CSupermarket::store(string name, const CDate & expiryDate, int co
         if (subItr == subMap.end()) {
             subMap.insert(make_pair(expiryDate, count));
         } else {
+            // same date item already exists
             subItr -> second += count;
         }
     }
@@ -318,18 +319,22 @@ CSupermarket & CSupermarket::store(string name, const CDate & expiryDate, int co
 
 CSupermarket & CSupermarket::sell(ProdList & shoppingList) {
     list<AdvancedItem> iterators;
+    // find sellable items
     for (auto itr = shoppingList.begin(); itr != shoppingList.end(); itr++) {
         MainMap::iterator dataItr;
         if (findItem(itr -> first, dataItr))
             iterators.push_back({itr, dataItr});
     }
+    // sell items
     for (auto & [listItr, mapItr] : iterators)
         listItr -> second = doBusiness(mapItr, listItr -> second);
     cleanUpMap(iterators);
 
+    // drop sold items in the beginning
     while (shoppingList.size() != 0 && shoppingList.begin() -> second == 0)
         shoppingList.pop_front();
 
+    // drop other sold items
     if (shoppingList.size() > 1) {
         auto itr = shoppingList.begin()++;
         while(itr != shoppingList.end()) {
@@ -345,6 +350,7 @@ CSupermarket & CSupermarket::sell(ProdList & shoppingList) {
 inline int CSupermarket::doBusiness(MainMap::iterator & mapItr, int count) {
     const string& realName = mapItr -> first;
     DateCountMap& data = mapItr -> second;
+    // empty item - date pairs
     vector<CDate> toRemove;
     for (auto &[key, value] : data) {
         if (count == 0) break;
@@ -473,6 +479,7 @@ ProdList CSupermarket::expired(const CDate & date) const {
         else
             mapItr -> second += item.count;
     }
+    // sort selected items by count
     for (auto const & [name, count] : expired)
         sorted.insert(NameCount(name, count));
     for (const NameCount & item : sorted)
@@ -520,7 +527,78 @@ void printList(const ProdList & list) {
     }
     cout << "null" << endl;
 }
+
+void myTest() {
+    CSupermarket s;
+    ProdList l;
+    CDate date = CDate(2022, 4, 1);
+
+    l = s.expired(date);
+    assert(l.size() == 0);
+    s.store("nevim", CDate(2022, 3, 1), 69);
+    l = s.expired(date);
+    assert(l.size() == 1);
+    s.store("nevim", CDate(2022, 5, 1), 69);
+    l = s.expired(date);
+    assert(l.size() == 1);
+    s.store("nevim", CDate(2022, 4, 1), 69);
+    l = s.expired(date);
+    assert(l.size() == 1);
+
+    s = CSupermarket();
+    s.store("Never", date, 6);
+    s.store("gonna", date, 6);
+    s.store("you", date, 5);
+    s.store("and", date, 2);
+
+    s.store("a", date, 1);
+    s.store("around", date, 1);
+    s.store("cry", date, 1);
+    s.store("desert", date, 1);
+    s.store("down", date, 1);
+    s.store("give", date, 1);
+    s.store("goodbye", date, 1);
+    s.store("hurt", date, 1);
+    s.store("let", date, 1);
+    s.store("lie", date, 1);
+    s.store("make", date, 1);
+    s.store("run", date, 1);
+    s.store("say", date, 1);
+    s.store("tell", date, 1);
+    s.store("up", date, 1);
+
+    l = {{"Never", 1}, {"gonna", 1}, {"give", 1}, {"you", 1}, {"up", 1}};
+    s.sell(l);
+    assert(l.empty());
+    l = {{"neveR", 1}, {"GOnna", 1}, {"lET", 1}, {"she", 1}, {"dOVn", 1}};
+    s.sell(l);
+    assert((l == ProdList{{"neveR", 1}, {"GOnna", 1}, {"lET", 1}, {"she", 1}, {"dOVn", 1}}));
+    l = {{"never", 1}, {"Gonna", 1}, {"lEt", 1}, {"yRu", 1}, {"doVn", 1}};
+    s.sell(l);
+    assert(l.empty());
+    l = {{"never", 1}, {"Gonna", 1}, {"lEt", 1}, {"yRu", 1}, {"doVn", 1}};
+    s.sell(l);
+    assert((l == ProdList{{"lEt", 1}, {"doVn", 1}}));
+    l = {{"Never", 1}, {"gonna", 1}, {"run", 1}, {"around", 1}, {"and", 1}, {"desert", 1}, {"you", 1}};
+    s.sell(l);
+    assert(l.empty());
+    l = {{"Never", 1}, {"gonna", 1}, {"make", 1}, {"you", 1}, {"cry", 1}};
+    s.sell(l);
+    assert((l == ProdList{}));
+    l = {{"Never", 1}, {"gonna", 1}, {"say", 1}, {"goodbye", 1}};
+    s.sell(l);
+    assert((l == ProdList{}));
+    l = {{"Never", 1}, {"gonna", 1}, {"tell", 1}, {"a", 1}, {"lie", 1}, {"and", 1}, {"hurt", 1}, {"you", 1}};
+    s.sell(l);
+    assert((l == ProdList{{"Never", 1}, {"gonna", 1}, {"you", 1}}));
+    l = {{"Never", 1}, {"gonna", 1}, {"tell", 1}, {"a", 1}, {"lie", 1}, {"and", 1}, {"hurt", 1}, {"you", 1}};
+    s.sell(l);
+    assert((l == ProdList{{"Never", 1}, {"gonna", 1}, {"tell", 1}, {"a", 1}, {"lie", 1}, {"and", 1}, {"hurt", 1}, {"you", 1}}));
+}
+
 int main(void) {
+    myTest();
+
     CSupermarket s;
 
     printLine("Init");
