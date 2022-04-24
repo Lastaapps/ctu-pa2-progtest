@@ -26,25 +26,25 @@ using namespace std;
 
 typedef set<size_t> NumSet;
 
+// use KMP instead of RK for strings
+#define KMP
+
+
 template <typename T, typename C = less<typename T::value_type>>
 class CIndex {
-    private:
-        T data;
-        C cmp;
-        vector<size_t> hashes;
     public:
-        CIndex(const T & d) : data(d), cmp(C()) {
-            init();
-        }
-        CIndex(const T & d, const C & c) : data(d), cmp(c) {
-            init();
-        }
+        CIndex(const T & d) : data(d), cmp(C()) { init(); }
+        CIndex(const T & d, const C & c) : data(d), cmp(c) { init(); }
         inline NumSet search(const T & phrase) const {
             if constexpr(is_same_v<T, string> && is_same_v<C, less<char>>)
                 return searchString(phrase);
             else return searchGeneral(phrase);
         }
     private:
+        T data;
+        C cmp;
+#ifndef KMP
+        vector<size_t> hashes;
         static constexpr size_t MODULO = 131;
         static constexpr size_t MULTIPLY = 128;
         void init() {
@@ -54,88 +54,113 @@ class CIndex {
         inline void createHashes(const string & str) {
             size_t hash = 0;
             hashes.emplace_back(0);
-            // cout << "Hash: " << "-  \t0" << endl;
             for (const char c : str) {
                 hash *= MULTIPLY;
-                hash += c - 'a';
+                hash += c;
                 hash %= MODULO;
                 hashes.emplace_back(hash);
-                // cout << "Hash: " << c << " \t" << hash << endl;
             }
         }
         inline static size_t createSingleHash(const string & str) {
             size_t hash = 0;
-            // cout << "Hash: " << "-  \t0" << endl;
             for (const char c : str) {
                 hash *= MULTIPLY;
-                hash += c - 'a';
+                hash += c;
                 hash %= MODULO;
-                // cout << "Hash: " << c << " \t" << hash << endl;
             }
             return hash;
         }
-        // KMP implementation inspired by lectures and Wikipedia pseudocode
+
         NumSet searchString(const string & phrase) const {
             NumSet indexes;
             if (phrase.size() > data.size()) return indexes;
-            const size_t pLen = phrase.size();
-            const vector<size_t> failFun = createFailFunction(phrase);
             const size_t pHash = createSingleHash(phrase);
+            const size_t pLen = phrase.size();
             const size_t pMod = moduloPow(MULTIPLY, pLen, MODULO);
 
-            size_t i = 0, j = 0;
-            // size_t cycles = 0;
-            while (i < data.size() - max(pLen, (size_t)1) + 1) {
-                if (j == 0 && (hashes[i] * pMod + pHash) % MODULO != hashes[i + pLen]) {
-                    i++;
-                    continue;
+            for (size_t i = 0; i < data.size() - max(pLen, (size_t)1) + 1; i++) {
+                if ((hashes[i] * pMod + pHash) % MODULO == hashes[i + pLen]) {
+                    size_t j = 0;
+                    for (; j < pLen; j++) {
+                        if (data[i + j] != phrase[j])
+                            break;
+                    }
+                    if (j == pLen) indexes.emplace(i);
                 }
-                // cycles++;
-                if (j == pLen) {
-                    indexes.emplace(i);
+            }
+            return indexes;
+        }
+        static size_t moduloPow(size_t what, size_t power, const size_t mod) {
+            size_t res = 1;
+            while (power > 0) {
+                if (power & 1uL) {
+                    res *= what;
+                    res %= mod;
+                }
+                what *= what;
+                what %= mod;
+                power >>= 1;
+            }
+            return res;
+        }
+#else
+        inline void init() {}
+        // KMP implementation inspired by lectures and Wikipedia pseudocode
+        NumSet searchString(const string & phrase) const {
+            const size_t pLen = phrase.size();
+            const size_t dLen = data.size();
+            if (pLen > dLen) return NumSet();
+            if (pLen == 0) return createAllIndexes(dLen);
+            NumSet indexes;
+            const vector<size_t> failFun = createFailFunction(phrase);
+
+            size_t i = 0, j = 0;
+            while (i < dLen) {
+                if (data[i] == phrase[j]) {
                     i++;
-                    j = 0;
-                } else if (data[i + j] == phrase[j]) {
                     j++;
+                    if (j >= pLen) {
+                        indexes.emplace(i - j);
+                        j = failFun[j];
+                    }
                 } else {
-                    if (j == 0) i++; else {
-                        i += j;
-                        j = failFun[j] - 1;
-                        i -= j;
+                    j = failFun[j];
+                    if (j == (size_t)-1) {
+                        i++;
+                        j++;
                     }
                 }
             }
-            // cout << "Done " << cycles << " / " << data.size() << " - " << ((double) cycles / data.size()) << endl;
-
             return indexes;
         }
 
-        // normal -1 starting impl is replaced by this one wiht all
-        // the positons increated by 1
-        vector<size_t> createFailFunction(const string & str) const {
-            const size_t len = str.size();
-            vector<size_t> toReturn = { 0, 1 };
-            toReturn.resize(str.size() + 1);
-            size_t pos = 0;
-            
-            for (size_t i = 1; i < len;) {
-                if (str[i] == str[pos]) {
-                    toReturn[++i] = ++pos + 1;
-                } else if (pos > 0) {
-                    pos = toReturn[pos] - 1;
-                } else {
-                    pos = 0;
-                    toReturn[++i] = 1;
-                }
-            }
-            /*cout << ' ' << str << endl;
-            for (auto i : toReturn)
-                cout << i;
-            cout << endl;*/
-
-            return toReturn;
+        inline NumSet createAllIndexes(const size_t len) const {
+            NumSet s;
+            for (size_t i = 0; i < len; i++)
+                s.emplace(i);
+            return s;
         }
 
+        // computes fail function for the str given
+        inline vector<size_t> createFailFunction(const string & str) const {
+            const size_t len = str.size();
+            vector<size_t> toReturn = { (size_t)-1, 0 };
+            toReturn.resize(str.size() + 1);
+            size_t pos = 0;
+
+            for (size_t i = 1; i < len;) {
+                if (str[i] == str[pos]) {
+                    toReturn[++i] = ++pos;
+                } else if (pos > 0) {
+                    pos = toReturn[pos];
+                } else {
+                    pos = 0;
+                    toReturn[++i] = 0;
+                }
+            }
+            return toReturn;
+        }
+#endif
         NumSet searchGeneral(const T & phrase) const {
             NumSet indexes;
             if (phrase.size() > data.size()) return indexes;
@@ -164,20 +189,6 @@ class CIndex {
             inline bool equal(const V & v1, const V & v2) const {
                 return !cmp(v1, v2) && !cmp(v2, v1);
             }
-
-        static size_t moduloPow(size_t what, size_t power, const size_t mod) {
-            size_t res = 1;
-            while (power > 0) {
-                if (power & 1uL) {
-                    res *= what;
-                    res %= mod;
-                }
-                what *= what;
-                what %= mod;
-                power >>= 1;
-            }
-            return res;
-        }
 };
 
 
@@ -185,8 +196,7 @@ class CIndex {
 class CStrComparator {
     public:
         CStrComparator(bool caseSensitive )
-            : m_CaseSensitive(caseSensitive){
-            }
+            : m_CaseSensitive(caseSensitive){}
         bool operator ()(const string & a, const string & b)const {
             return m_CaseSensitive ? strcasecmp(a.c_str (), b.c_str ())< 0 : a < b ;
         }
@@ -204,27 +214,30 @@ void printSet(const NumSet & set) {
 }
 
 int main(void){
+#ifdef KMP
+    cout << "Using KMP impl" << endl;
+#else
+    cout << "Using RK impl" << endl;
     /*
-    assert(moduloPow(2, 0, -1) ==  1); 
-    assert(moduloPow(2, 1, -1) ==  2); 
-    assert(moduloPow(2, 2, -1) ==  4); 
-    assert(moduloPow(2, 3, -1) ==  8); 
-    assert(moduloPow(2, 4, -1) == 16); 
-    assert(moduloPow(2, 5, -1) == 32); 
-    assert(moduloPow(2, 6, -1) == 64); 
+    assert(moduloPow(2, 0, -1) ==  1);
+    assert(moduloPow(2, 1, -1) ==  2);
+    assert(moduloPow(2, 2, -1) ==  4);
+    assert(moduloPow(2, 3, -1) ==  8);
+    assert(moduloPow(2, 4, -1) == 16);
+    assert(moduloPow(2, 5, -1) == 32);
+    assert(moduloPow(2, 6, -1) == 64);
 
-    assert(moduloPow(2, 0, 13) ==  1); 
-    assert(moduloPow(2, 1, 13) ==  2); 
-    assert(moduloPow(2, 2, 13) ==  4); 
-    assert(moduloPow(2, 3, 13) ==  8); 
-    assert(moduloPow(2, 4, 13) ==  3); 
-    assert(moduloPow(2, 5, 13) ==  6); 
+    assert(moduloPow(2, 0, 13) ==  1);
+    assert(moduloPow(2, 1, 13) ==  2);
+    assert(moduloPow(2, 2, 13) ==  4);
+    assert(moduloPow(2, 3, 13) ==  8);
+    assert(moduloPow(2, 4, 13) ==  3);
+    assert(moduloPow(2, 5, 13) ==  6);
     assert(moduloPow(2, 6, 13) == 12);
     */
+#endif
 
     CIndex <string> i0("abcabcabc" );
-    i0.search("cococay");
-    i0.search("abcdabd");
     set<size_t> m0 = i0.search("abcabcabc" );
     assert( m0 ==(set<size_t> { 0 }));
     set<size_t> m1 = i0.search("abcabcab" );
@@ -307,8 +320,6 @@ int main(void){
     assert( r26 ==(set<size_t> { 2, 5 }));
 
     cout << "All tests passed!" << endl;
-#ifdef BLBOST
-#endif
     return 0;
 }
 #endif /* __PROGTEST__ */
